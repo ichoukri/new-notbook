@@ -1,0 +1,1341 @@
+AI Design Prompt for Figma / UI Generation
+
+Design a modern, professional, SaaS-style web application UI for an AI document ingestion and knowledge platform that lets users upload files, extract content, chunk it, build embeddings, store vectors, and later use the data in RAG systems or for LLM training workflows.
+
+The product should feel like a mix of:
+
+Notion AI
+
+Linear
+
+Vercel
+
+Scale AI
+
+Glean
+
+OpenAI / Anthropic dashboard aesthetics
+
+The overall style should be:
+
+clean
+
+modern
+
+highly structured
+
+enterprise-ready
+
+elegant but technical
+
+clear visual hierarchy
+
+subtle shadows
+
+large rounded cards
+
+excellent spacing
+
+highly usable for power users
+
+minimal but not empty
+
+strong dashboard UX
+
+premium B2B SaaS feel
+
+Use a desktop web app layout first, optimized for large screens. Create full Figma-ready product screens, not just isolated components.
+
+Product concept
+
+This app allows a user to:
+
+Upload a document or any supported file type
+
+Automatically detect file type
+
+Extract content from the file
+
+Normalize and clean the extracted content
+
+Chunk the content
+
+Build “embed text” for each chunk
+
+Build metadata for each chunk
+
+Generate embeddings
+
+Index into a vector database
+
+Make the content searchable for retrieval
+
+Optionally use the processed content later in a RAG system or LLM training pipeline
+
+The app has two ingestion modes:
+
+Auto Mode
+The system runs the entire ingestion pipeline automatically with minimal user interaction.
+
+Guided Mode
+The system pauses at key stages and lets the user review, edit, approve, and configure outputs before moving to the next stage.
+
+Main design goal
+
+Design an end-to-end SaaS platform where the user can:
+
+manage datasets
+
+upload and process files
+
+choose auto or guided mode
+
+review ingestion steps
+
+inspect chunks
+
+choose embedding strategies
+
+configure metadata and permissions
+
+monitor ingestion progress
+
+test retrieval
+
+manage already-ingested documents
+
+The UI must clearly communicate:
+
+system status
+
+processing stages
+
+document structure
+
+user control
+
+trust and transparency
+
+technical depth without being overwhelming
+
+Global design system
+
+Create a strong design system for the app.
+
+Visual style
+
+white or very light neutral background
+
+soft gray panels
+
+dark text
+
+one strong primary accent color, preferably blue or indigo
+
+success green, warning amber, danger red
+
+very subtle dividers
+
+rounded corners: medium to large
+
+consistent padding and spacing
+
+use cards, tabs, badges, step indicators, tables, panels, drawers, modals
+
+Typography
+
+bold clear page titles
+
+smaller muted descriptions
+
+readable table text
+
+technical but polished labels
+
+hierarchy should be obvious
+
+Components to include
+
+top navigation
+
+sidebar navigation
+
+dataset cards
+
+file table
+
+ingestion wizard stepper
+
+chunk cards
+
+preview panels
+
+settings sidebars
+
+metadata chips
+
+tag selectors
+
+permission controls
+
+dropdowns
+
+tabs
+
+progress bars
+
+status pills
+
+logs panel
+
+empty states
+
+upload dropzone
+
+search bars
+
+filters
+
+modals
+
+right-side drawers
+
+split-pane views
+
+diff views
+
+approve/continue action bars
+
+Information architecture
+
+Design the app with these major pages / modules:
+
+Dashboard / Home
+
+Datasets list
+
+Dataset details
+
+New ingestion flow
+
+Auto Mode ingestion page
+
+Guided Mode ingestion wizard
+
+Document details page
+
+Chunk explorer
+
+Metadata & permissions editor
+
+Embedding/indexing progress page
+
+Retrieval testing page
+
+Settings / models / vector DB config
+
+Activity / ingestion logs
+
+Empty states and success states
+
+Sidebar navigation
+
+Design a left sidebar with items such as:
+
+Dashboard
+
+Datasets
+
+Documents
+
+Ingestions
+
+Retrieval Test
+
+Models
+
+Vector Store
+
+Activity
+
+Settings
+
+Include a workspace / tenant switcher at the top.
+
+Top bar
+
+Include a top navigation bar with:
+
+page title
+
+breadcrumb
+
+global search
+
+notifications
+
+user profile menu
+
+tenant/workspace badge
+
+New Ingestion CTA button
+
+Dashboard page
+
+Design a dashboard page that gives a high-level overview of the system.
+
+Include:
+
+total datasets
+
+total documents
+
+total chunks
+
+total embeddings
+
+recent ingestions
+
+failed jobs
+
+vector store health
+
+retrieval activity
+
+quick actions
+
+Add cards such as:
+
+Documents processed this week
+
+Chunks indexed
+
+Pending guided approvals
+
+Recent uploads
+
+Top datasets
+
+Storage usage
+
+Embedding model in use
+
+Vector DB status
+
+Datasets page
+
+Design a datasets management page.
+
+Each dataset should have:
+
+name
+
+description
+
+owner
+
+visibility
+
+number of documents
+
+number of chunks
+
+created date
+
+tags
+
+status
+
+Include:
+
+grid view
+
+table view
+
+search and filter bar
+
+create dataset modal
+
+dataset cards with nice badges
+
+Dataset details page
+
+Design a page for one dataset.
+
+Include:
+
+dataset header with name, description, tags, visibility
+
+tabs:
+
+Documents
+
+Ingestions
+
+Retrieval
+
+Metadata
+
+Permissions
+
+Settings
+
+document list table
+
+recent ingestion activity
+
+dataset-level retrieval test panel
+
+button to upload new file
+
+New ingestion entry point
+
+Design a polished New Ingestion page where the user chooses:
+
+dataset
+
+upload file
+
+ingestion mode: Auto or Guided
+
+optional advanced settings
+
+This should feel very premium and very clear.
+
+Include:
+
+drag-and-drop upload zone
+
+supported file types note
+
+mode cards:
+
+Auto Mode
+
+Guided Mode
+
+small description under each mode
+
+file info preview after upload
+
+selected dataset card
+
+Start Ingestion button
+
+AUTO MODE UX
+
+Now design how Auto Mode should look.
+
+The auto-mode flow should feel:
+
+fast
+
+minimal
+
+automated
+
+trustworthy
+
+technical but simple
+
+ideal for bulk ingestion
+
+Auto Mode pipeline
+
+Load file + detect type → Extract content → Normalize + clean → Chunking → Build embed text → Build metadata for each chunk → Embedding → Index into vector database → Ready for retrieval
+
+Auto Mode frontend requirements
+
+Design a page that shows:
+
+ingestion summary header
+
+compact step progress tracker
+
+real-time processing status
+
+live logs or events
+
+quick preview of extracted content
+
+chunk count
+
+metadata summary
+
+embedding model info
+
+vector DB target
+
+final success state
+
+Auto Mode page layout
+
+Create a page layout with:
+
+header section: file name, dataset, ingestion mode, current status
+
+horizontal progress stepper
+
+main content area with live status cards
+
+right-side summary panel
+
+logs area or activity timeline
+
+final action panel
+
+Auto Mode screens to design
+
+Auto Mode — In Progress
+Show:
+
+stepper with active step highlighted
+
+progress bar
+
+status pills like Extracting, Chunking, Embedding
+
+logs stream
+
+counters:
+
+pages extracted
+
+chunks generated
+
+metadata fields assigned
+
+vectors indexed
+
+Auto Mode — Partial preview
+Show:
+
+extracted content preview
+
+generated chunk count
+
+sample metadata
+
+sample embed text preview
+
+indexing target info
+
+Auto Mode — Success
+Show:
+
+ingestion completed
+
+total pages
+
+total chunks
+
+content types detected
+
+vector store used
+
+ready for retrieval
+
+buttons:
+
+Open document
+
+Test retrieval
+
+View chunks
+
+Upload another
+
+Auto Mode — Error / Retry
+Show:
+
+failed step
+
+concise error panel
+
+diagnostics / logs
+
+retry button
+
+download logs button
+
+suggestion to switch to guided mode
+
+Auto Mode tone
+
+This mode should feel:
+
+efficient
+
+mostly read-only
+
+system-driven
+
+less editing
+
+more monitoring than configuring
+
+GUIDED MODE UX
+
+Now design how Guided Mode should look.
+
+The guided mode should feel:
+
+interactive
+
+transparent
+
+editable
+
+review-based
+
+suitable for sensitive or high-value documents
+
+The guided mode frontend should be a multi-step wizard / review workflow.
+
+Guided Mode main checkpoints
+
+The user should be able to review or act at these checkpoints:
+
+Upload
+
+Review extracted content
+
+Review cleaned content
+
+Review and edit chunks
+
+Choose embed representation
+
+Review metadata and permissions
+
+Run embedding and indexing
+
+Complete / ready state
+
+Guided Mode stepper
+
+Design a strong stepper component with states:
+
+completed
+
+current
+
+pending
+
+paused awaiting approval
+
+The stepper should appear at the top of every guided screen.
+
+Guided Mode page 1 — Upload
+
+Design the upload page for Guided Mode.
+
+Include:
+
+dataset selector
+
+drag-and-drop upload area
+
+mode selected as Guided Mode
+
+supported file types list
+
+selected file preview
+
+Upload and Start CTA
+
+The page should feel welcoming and simple.
+
+Guided Mode page 2 — Review extracted content
+
+This page appears after extraction is complete.
+
+Include:
+
+stepper at top
+
+split layout or tabbed layout
+
+extracted text preview
+
+detected assets summary
+
+tabs for:
+
+Text
+
+Tables
+
+Images / OCR
+
+Transcript
+
+right panel with extraction settings
+
+options like:
+
+run OCR on scanned pages
+
+include images
+
+extract tables
+
+ignore decorative elements
+
+Bottom action bar:
+
+Back
+
+Save Draft
+
+Approve & Continue
+
+This page should emphasize trust and transparency.
+
+Guided Mode page 3 — Review cleaned content
+
+This page should show before/after cleaning.
+
+Include:
+
+split-pane diff-style comparison
+
+left: original extracted content
+
+right: cleaned content
+
+list of cleaning operations applied
+
+warnings for uncertain cleanup
+
+ability to accept and continue
+
+Bottom action bar:
+
+Back
+
+Save Draft
+
+Approve & Continue
+
+This page should feel analytical and easy to compare.
+
+Guided Mode page 4 — Review and edit chunks
+
+This is one of the most important pages.
+
+Design a rich chunk management screen.
+
+Include:
+
+chunk settings panel:
+
+chunk size
+
+overlap
+
+regenerate chunks
+
+chunk list or chunk table
+
+each chunk card should show:
+
+chunk number
+
+content type
+
+source page / section
+
+token count
+
+short preview
+
+status badge
+
+per-chunk actions:
+
+edit
+
+split
+
+merge
+
+delete
+
+normalize table
+
+clean OCR
+
+Also include:
+
+preview drawer or modal for selected chunk
+
+support for mixed chunks
+
+badges like:
+
+TEXT
+
+TABLE
+
+OCR
+
+MIXED
+
+IMAGE
+
+TRANSCRIPT
+
+Bottom action bar:
+
+Back
+
+Save Draft
+
+Approve Chunks
+
+This page should feel like a powerful content review tool.
+
+Guided Mode page 5 — Choose embed representation
+
+Design a page where the user decides what will be embedded.
+
+This is not just raw chunk text. The system may build optimized embed text.
+
+The UI should explain these modes:
+
+Raw
+
+Normalized
+
+Summary
+
+Hybrid
+
+Important logic to reflect visually
+
+Text chunks usually embed the cleaned raw text
+
+Table chunks may use normalized table text
+
+Image chunks may use OCR + caption
+
+OCR-heavy chunks may use cleaned or summarized representation
+
+Mixed chunks may use composed embed text
+
+Page layout
+
+Include:
+
+global embedding strategy selector
+
+explanation card for each strategy
+
+raw chunk vs embed text preview comparison
+
+per-chunk override controls
+
+small badges indicating chosen mode per chunk
+
+embedding model selector
+
+optional cost / token estimate panel
+
+Bottom action bar:
+
+Back
+
+Save Draft
+
+Approve & Continue
+
+This page should feel intelligent and highly informative.
+
+Guided Mode page 6 — Review metadata and permissions
+
+This page lets the user review metadata that will be stored with each chunk and used later for filtering during retrieval.
+
+Metadata to reflect in the UI
+
+Possible fields:
+
+tenant_id
+
+dataset_id
+
+document_id
+
+chunk_id
+
+chunk_index
+
+content_type
+
+language
+
+tags
+
+visibility
+
+filename
+
+page
+
+section_title
+
+timestamp_start
+
+uploaded_by_user_id
+
+allowed_group_ids
+
+allowed_user_ids
+
+Explain why metadata matters
+
+The UI should communicate that metadata is used for:
+
+retrieval filtering
+
+citations
+
+permissions
+
+auditing
+
+document traceability
+
+Page layout
+
+Include:
+
+document-level metadata panel
+
+chunk-level metadata preview table
+
+permissions section
+
+visibility dropdown
+
+tag editor
+
+group access selector
+
+preview of metadata chips per chunk
+
+search/filter preview example
+
+Bottom action bar:
+
+Back
+
+Save Draft
+
+Approve & Continue
+
+This page should feel secure, precise, and enterprise-ready.
+
+Guided Mode page 7 — Embedding and indexing progress
+
+This page shows the final processing once the user has approved everything.
+
+Include:
+
+full stepper
+
+progress status
+
+live counts:
+
+chunks embedded
+
+vectors indexed
+
+estimated remaining tasks
+
+logs panel
+
+status cards
+
+cancel or retry controls if appropriate
+
+This page should look more like a deployment/progress screen.
+
+Guided Mode page 8 — Complete
+
+Design the final success page.
+
+Include:
+
+large success state
+
+file name
+
+dataset
+
+mode used
+
+total chunks
+
+content types detected
+
+embedding strategy used
+
+vector store used
+
+buttons:
+
+Open document
+
+View chunks
+
+Test retrieval
+
+Upload another file
+
+This page should feel rewarding and confident.
+
+Document details page
+
+Design a document detail page that the user sees after ingestion.
+
+Include:
+
+document header
+
+status
+
+mode used
+
+source file info
+
+tabs:
+
+Overview
+
+Chunks
+
+Metadata
+
+Permissions
+
+Retrieval Preview
+
+Logs
+
+preview of source file and extracted content
+
+ingestion history timeline
+
+re-run embedding button
+
+re-open in guided editor button
+
+Chunk explorer page
+
+Design a chunk explorer interface.
+
+Include:
+
+list/table of chunks
+
+filters by:
+
+content type
+
+language
+
+tag
+
+page
+
+section
+
+embedding mode
+
+chunk preview panel
+
+raw text vs embed text comparison
+
+metadata preview
+
+retrieval score placeholder area
+
+actions:
+
+edit chunk
+
+re-embed
+
+delete
+
+inspect neighbors
+
+This page should be highly useful for debugging and expert users.
+
+Retrieval testing page
+
+Design a page where the user can test retrieval after indexing.
+
+Include:
+
+search input
+
+selected dataset filter
+
+metadata filters
+
+top-k control
+
+retrieval mode control
+
+results list
+
+chunk result cards with:
+
+source filename
+
+page / section / timestamp
+
+content type
+
+score
+
+raw snippet
+
+metadata chips
+
+optional right-side preview showing full chunk and nearby chunks
+
+This page should feel like a serious RAG diagnostics screen.
+
+Logs / activity page
+
+Design an activity page showing ingestion logs and events.
+
+Include:
+
+filters by dataset, document, status, date, mode
+
+timeline layout or log table
+
+statuses:
+
+queued
+
+extracting
+
+cleaned
+
+chunked
+
+embedding
+
+indexed
+
+failed
+
+complete
+
+log detail drawer
+
+Settings page
+
+Design settings pages for:
+
+embedding model selection
+
+default chunk size / overlap
+
+default metadata settings
+
+vector database configuration
+
+default auto mode behavior
+
+default guided mode options
+
+permission defaults
+
+retry policy
+
+ingestion notifications
+
+This should feel like a real admin/settings panel.
+
+Important product behaviors to reflect in UI
+
+The designs must communicate the following product rules clearly:
+
+Auto Mode behavior
+
+fast, minimal friction
+
+system automatically processes all steps
+
+user mostly monitors progress
+
+user can inspect outputs but not necessarily edit at every stage
+
+Guided Mode behavior
+
+system pauses at key checkpoints
+
+user can review, edit, and approve before continuing
+
+much more control over extraction, chunks, embedding strategy, metadata, and permissions
+
+Build embed text logic
+
+The UI should reflect that embed text is not always the same as raw text:
+
+plain text chunks can use cleaned raw text
+
+table chunks may use normalized textual representation
+
+image chunks may use OCR + caption
+
+OCR-heavy chunks may use constrained summaries
+
+mixed chunks may use composed embed text
+
+Metadata / filtering logic
+
+The UI should make metadata feel important, especially for:
+
+retrieval filtering
+
+citations
+
+visibility
+
+permissions
+
+multi-tenant isolation
+
+traceability
+
+Accessibility and UX requirements
+
+Make the UI:
+
+highly readable
+
+keyboard-friendly
+
+visually calm
+
+not cluttered
+
+easy to scan
+
+enterprise-grade
+
+suitable for long documents and large datasets
+
+Use:
+
+sticky bottom action bars on wizard pages
+
+sticky stepper
+
+clear empty states
+
+elegant loading skeletons
+
+collapsible advanced panels
+
+tooltips for technical terms
+
+good table UX
+
+resizable split panes where helpful
+
+Deliverables to generate
+
+Generate a complete Figma-style UI system and multiple full screens for:
+
+Dashboard
+
+Datasets list
+
+Dataset details
+
+New ingestion page
+
+Auto Mode in progress
+
+Auto Mode success
+
+Guided Mode upload
+
+Guided Mode extracted content review
+
+Guided Mode cleaned content review
+
+Guided Mode chunk review
+
+Guided Mode embed representation page
+
+Guided Mode metadata and permissions page
+
+Guided Mode indexing progress
+
+Guided Mode complete page
+
+Document details
+
+Chunk explorer
+
+Retrieval testing
+
+Logs/activity
+
+Settings
+
+Empty / error / success states
+
+Layout direction
+
+Prefer:
+
+large desktop SaaS layouts
+
+sidebar + topbar structure
+
+card-based content
+
+split-pane editor/review layouts
+
+wizard flows for guided mode
+
+operational dashboard for auto mode
+
+Final visual instruction
+
+The result should look like a real startup-ready AI knowledge platform, polished enough for:
+
+product presentations
+
+investor demos
+
+internal design exploration
+
+engineering handoff inspiration
+
+The design must feel:
+
+premium
+
+highly usable
+
+technically credible
+
+scalable
+
+modern
+
+enterprise AI native
+
+Do not generate only one page. Generate a full coherent product design system and connected app screens with consistent components, spacing, color system, and interaction patterns.
