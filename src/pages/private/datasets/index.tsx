@@ -512,7 +512,9 @@ export default function DatasetsPage() {
           <p className="text-sm text-gray-600 py-1">
             Are you sure you want to delete{" "}
             <span className="font-semibold text-gray-900">"{deleteTarget?.name}"</span>?
-            All linked documents will be unlinked.
+            Documents shared with other datasets will be unlinked. Documents
+            linked only to this dataset will be permanently deleted (chunks
+            and source files).
           </p>
           <DialogFooter className="gap-2 mt-2">
             <button
