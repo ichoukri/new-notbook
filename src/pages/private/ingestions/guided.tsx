@@ -8,9 +8,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import {
-  CheckCircle2, Circle, ChevronRight, FileText, Layers, ArrowLeft,
+  CheckCircle2, ChevronRight, FileText, ArrowLeft,
   ArrowRight, Save, Edit3, Scissors, Trash2, Merge, CheckCheck, Cpu,
   Shield, Tag, Users, Globe, Lock
 } from "lucide-react";
@@ -190,7 +189,7 @@ function ExtractedStep({ onBack, onContinue }: { onBack: () => void; onContinue:
               <TabsContent value="text" className="p-5 m-0">
                 <div className="text-sm text-gray-700 leading-relaxed h-64 overflow-y-auto space-y-3">
                   <p><strong>1. Authentication Overview</strong></p>
-                  <p>The API uses Bearer token authentication. All requests must include a valid JWT in the Authorization header with the format 'Bearer &lt;token&gt;'. Tokens expire after 3600 seconds and must be refreshed using the /auth/refresh endpoint.</p>
+                  <p>The API uses platform session cookies issued by the auth frontend. Browser requests include the session automatically, and the backend validates it through the central auth service.</p>
                   <p><strong>2. Rate Limiting</strong></p>
                   <p>Each endpoint has independent rate limits. The default limit is 100 requests per minute per API key. Exceeded requests receive a 429 Too Many Requests response with a Retry-After header.</p>
                   <p><strong>3. Request Format</strong></p>
@@ -256,11 +255,10 @@ function CleanedStep({ onBack, onContinue }: { onBack: () => void; onContinue: (
           <div className="p-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Original Extracted</p>
             <div className="text-xs text-gray-600 bg-gray-50 rounded-xl p-4 h-72 overflow-y-auto leading-relaxed whitespace-pre-wrap font-mono">
-{`The  API  uses  Bearer  token  authentication.
-All  requests  must  include a  valid  JWT  in the
-Authorization  header  with  the format  'Bearer 
-<token>'.  Tokens  expire  after  3600  seconds  and 
-must  be  refreshed  using the  /auth/refresh  endpoint.
+{`The  API  uses  platform  session  cookies.
+Browser  requests  include  the active  session
+automatically,  and  the  backend validates it
+through  the  central  auth service.
 
 [PAGE BREAK]
 
@@ -272,11 +270,10 @@ Each endpoint has  independent  rate limits . The default limit is
           <div className="p-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Cleaned Content</p>
             <div className="text-xs text-gray-700 bg-gray-50 rounded-xl p-4 h-72 overflow-y-auto leading-relaxed whitespace-pre-wrap font-mono">
-{`The API uses Bearer token authentication.
-All requests must include a valid JWT in the
-Authorization header with the format 'Bearer <token>'.
-Tokens expire after 3600 seconds and must be
-refreshed using the /auth/refresh endpoint.
+{`The API uses platform session cookies.
+Browser requests include the active session
+automatically, and the backend validates it
+through the central auth service.
 
 Rate Limiting
 
@@ -464,13 +461,13 @@ function EmbedStep({ onBack, onContinue }: { onBack: () => void; onContinue: () 
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Raw Chunk Text</p>
             <div className="text-xs text-gray-600 bg-gray-50 rounded-xl p-4 h-36 overflow-y-auto leading-relaxed font-mono">
-              The API uses Bearer token authentication. All requests must include a valid JWT in the Authorization header with the format 'Bearer &lt;token&gt;'...
+              The API uses platform session cookies. Browser requests include the active session automatically, and the backend validates it through the central auth service...
             </div>
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Embed Text Preview ({strategy})</p>
             <div className="text-xs text-indigo-700 bg-indigo-50 rounded-xl p-4 h-36 overflow-y-auto leading-relaxed font-mono">
-              Authentication Overview: The API uses Bearer token authentication. Requests require a valid JWT in the Authorization header with format 'Bearer &lt;token&gt;'. Token lifetime is 3600s with refresh support...
+              Authentication Overview: The API uses platform session cookies. Requests are validated by the central auth service and scoped to the current tenant...
             </div>
           </div>
         </div>

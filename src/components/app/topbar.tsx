@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { Search, Bell, ChevronRight, Plus, Command } from "lucide-react";
+import { Search, Bell, ChevronRight, Plus } from "lucide-react";
 
 interface TopbarProps {
   title: string;

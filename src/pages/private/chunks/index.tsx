@@ -2,15 +2,12 @@ import { useState } from "react";
 import Topbar from "@/components/app/topbar";
 import { CHUNKS } from "@/data/mock";
 import { ContentTypeBadge } from "@/components/app/status-badge";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Search, Edit3, RefreshCw, Trash2, Network, Tag, FileText, Hash,
   Code2, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type Chunk = typeof CHUNKS[0];
 
 export default function ChunkExplorerPage() {
   const [selectedChunk, setSelectedChunk] = useState(CHUNKS[0]);

@@ -99,7 +99,7 @@ export function getDocumentUploaderLabel(
 ): string {
   if (currentUser && document.userId === currentUser.id) {
     const fullName = `${currentUser.firstName} ${currentUser.lastName}`.trim();
-    return fullName || currentUser.email;
+    return fullName || currentUser.email || currentUser.username || currentUser.id;
   }
 
   return document.userId

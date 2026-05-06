@@ -1,14 +1,7 @@
 import { env } from "@/config/env";
 import axios, { type AxiosInstance } from "axios";
-import {
-  clearStoredAuth,
-  consumeAuthFragment,
-  getStoredAccessToken,
-} from "@/core/auth";
 import { useGlobalStore } from "@/core/global-store/index";
 import type { TUser } from "../types";
-
-consumeAuthFragment();
 
 const setUser = useGlobalStore.getState().setUser;
 
@@ -31,17 +24,7 @@ class BackendApi {
       withCredentials: true,
     });
 
-    this.setAccessToken(getStoredAccessToken());
     this.setupInterceptors();
-  }
-
-  private setAccessToken(accessToken: string | null) {
-    if (accessToken) {
-      this.api.defaults.headers.common["Authorization"] =
-        `Bearer ${accessToken}`;
-      return;
-    }
-    delete this.api.defaults.headers.common["Authorization"];
   }
 
   private setupInterceptors() {
@@ -49,9 +32,7 @@ class BackendApi {
       (response) => response,
       (error) => {
         if (error.response?.status === 401) {
-          clearStoredAuth();
           setUser(null);
-          this.setAccessToken(null);
           redirectToAuthLogin();
         }
         return Promise.reject(error);
@@ -141,9 +122,7 @@ class BackendApi {
   }
 
   signOut(): void {
-    clearStoredAuth();
     setUser(null);
-    this.setAccessToken(null);
     redirectToAuthLogout();
   }
 }

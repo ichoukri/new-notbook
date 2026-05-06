@@ -197,8 +197,6 @@ export default function ActivityPage() {
 }
 
 function DetailPanel({ log, onClose }: { log: Log; onClose: () => void }) {
-  const cfg = STATUS_CONFIG[log.status] ?? STATUS_CONFIG.queued;
-
   return (
     <div className="w-80 flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
       {/* Header */}
