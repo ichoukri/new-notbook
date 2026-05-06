@@ -2,22 +2,25 @@ import { env } from "@/config/env";
 import axios, { type AxiosInstance } from "axios";
 import {
   clearStoredAuth,
+  consumeAuthFragment,
   getStoredAccessToken,
-  mapBackendUser,
-  mapTokenResponse,
-  persistAuth,
 } from "@/core/auth";
 import { useGlobalStore } from "@/core/global-store/index";
-import type {
-  TBackendTokenResponse,
-  TBackendUser,
-  TSigninInput,
-  TSigninResponse,
-  TSignupInput,
-  TSignupResponse,
-} from "../types";
+import type { TUser } from "../types";
+
+consumeAuthFragment();
 
 const setUser = useGlobalStore.getState().setUser;
+
+function redirectToAuthLogin(): void {
+  const redirectUri = window.location.href;
+  window.location.href = `${env.VITE_AUTH_FRONTEND_URL}/login?redirect_uri=${encodeURIComponent(redirectUri)}`;
+}
+
+function redirectToAuthLogout(): void {
+  const redirectUri = window.location.href;
+  window.location.href = `${env.VITE_AUTH_FRONTEND_URL}/logout?redirect_uri=${encodeURIComponent(redirectUri)}`;
+}
 
 class BackendApi {
   private readonly api: AxiosInstance;
@@ -25,6 +28,7 @@ class BackendApi {
   constructor(url: string) {
     this.api = axios.create({
       baseURL: url,
+      withCredentials: true,
     });
 
     this.setAccessToken(getStoredAccessToken());
@@ -37,7 +41,6 @@ class BackendApi {
         `Bearer ${accessToken}`;
       return;
     }
-
     delete this.api.defaults.headers.common["Authorization"];
   }
 
@@ -49,8 +52,8 @@ class BackendApi {
           clearStoredAuth();
           setUser(null);
           this.setAccessToken(null);
+          redirectToAuthLogin();
         }
-
         return Promise.reject(error);
       },
     );
@@ -105,40 +108,6 @@ class BackendApi {
     await this.api.delete(deleteManyPath, { data });
   }
 
-  async signUp(data: TSignupInput): Promise<TSignupResponse> {
-    const response = await this.api.post<TBackendUser>("/auth/signup", {
-      first_name: data.firstName.trim(),
-      last_name: data.lastName.trim(),
-      email: data.email.trim().toLowerCase(),
-      password: data.password,
-      confirm_password: data.confirmPassword,
-    });
-
-    return mapBackendUser(response.data);
-  }
-
-  async signIn(data: TSigninInput): Promise<TSigninResponse> {
-    const formData = new URLSearchParams();
-    formData.set("username", data.email.trim().toLowerCase());
-    formData.set("password", data.password);
-
-    const response = await this.api.post<TBackendTokenResponse>(
-      "/auth/login",
-      formData,
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      },
-    );
-
-    const session = mapTokenResponse(response.data);
-    persistAuth(session);
-    setUser(session.user);
-    this.setAccessToken(session.accessToken);
-    return session;
-  }
-
   async getFile(path: string, params?: Record<string, string>): Promise<Blob> {
     const response = await this.api.get<Blob>(path, {
       params,
@@ -152,10 +121,30 @@ class BackendApi {
     return response.data;
   }
 
-  async signOut(): Promise<void> {
+  async fetchMe(): Promise<TUser> {
+    const response = await this.api.get<{
+      id: string;
+      email?: string | null;
+      username?: string | null;
+      role_id?: string | null;
+      tenant_id?: string | null;
+      is_active?: boolean;
+    }>("/me");
+    const data = response.data;
+    return {
+      id: data.id,
+      email: data.email ?? undefined,
+      username: data.username ?? undefined,
+      roleId: data.role_id ?? null,
+      tenantId: data.tenant_id ?? null,
+    };
+  }
+
+  signOut(): void {
     clearStoredAuth();
     setUser(null);
     this.setAccessToken(null);
+    redirectToAuthLogout();
   }
 }
 

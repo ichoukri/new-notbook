@@ -18,10 +18,10 @@ import {
   LayoutGrid,
   List,
   Loader2,
-  MoreHorizontal,
   Plus,
   Search,
   Tag,
+  Trash2,
   TrendingUp,
   X,
 } from "lucide-react";
@@ -66,6 +66,8 @@ export default function DatasetsPage() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TDataset | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<DatasetStatusFilter>("all");
   const [datasets, setDatasets] = useState<TDataset[]>([]);
   const [error, setError] = useState("");
@@ -120,6 +122,21 @@ export default function DatasetsPage() {
       ...currentDatasets.filter((dataset) => dataset.id !== createdDataset.id),
     ]);
     toast.success("Dataset created.");
+  };
+
+  const handleDeleteDataset = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await backendApi.delete("/datasets", deleteTarget.id);
+      setDatasets((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      toast.success(`"${deleteTarget.name}" deleted.`);
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Could not delete dataset."));
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const query = search.trim().toLowerCase();
@@ -330,6 +347,7 @@ export default function DatasetsPage() {
                   key={dataset.id}
                   dataset={dataset}
                   onClick={() => navigate(`/datasets/${dataset.id}`)}
+                  onDelete={() => setDeleteTarget(dataset)}
                 />
               ))}
               {filtered.length === 0 && (
@@ -449,10 +467,13 @@ export default function DatasetsPage() {
                           </td>
                           <td className="px-4 py-4">
                             <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-all"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget(dataset);
+                              }}
+                              className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all"
                             >
-                              <MoreHorizontal className="size-4 text-gray-400" />
+                              <Trash2 className="size-4" />
                             </button>
                           </td>
                         </tr>
@@ -471,6 +492,47 @@ export default function DatasetsPage() {
         onClose={() => setCreateOpen(false)}
         onCreate={handleCreateDataset}
       />
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null); }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="size-4 text-red-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-base">Delete dataset</DialogTitle>
+                <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
+              </div>
+            </div>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 py-1">
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-gray-900">"{deleteTarget?.name}"</span>?
+            All linked documents will be unlinked.
+          </p>
+          <DialogFooter className="gap-2 mt-2">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+              className="flex-1 h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteDataset}
+              disabled={isDeleting}
+              className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              {isDeleting && <Loader2 className="size-4 animate-spin" />}
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -478,9 +540,11 @@ export default function DatasetsPage() {
 function DatasetCard({
   dataset,
   onClick,
+  onDelete,
 }: {
   dataset: TDataset;
   onClick: () => void;
+  onDelete: () => void;
 }) {
   const statusConfig = STATUS_CONFIG[dataset.status];
   const StatusIcon = statusConfig.icon;
@@ -502,10 +566,10 @@ function DatasetCard({
           </span>
         </div>
         <button
-          className="w-6 h-6 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-all"
-          onClick={(e) => e.stopPropagation()}
+          className="w-6 h-6 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
         >
-          <MoreHorizontal className="size-3.5 text-gray-400" />
+          <Trash2 className="size-3.5" />
         </button>
       </div>
 

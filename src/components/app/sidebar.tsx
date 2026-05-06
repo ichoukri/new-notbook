@@ -57,9 +57,8 @@ export default function Sidebar() {
     return location.pathname.startsWith(path.split("?")[0]);
   };
 
-  const handleSignOut = async () => {
-    await backendApi.signOut();
-    navigate("/auth", { replace: true });
+  const handleSignOut = () => {
+    backendApi.signOut();
   };
 
   return (

@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { StatusBadge, ModeBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
@@ -34,7 +42,9 @@ import {
   FileText,
   Layers,
   Loader2,
+  RefreshCw,
   Search,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -85,6 +95,46 @@ export default function DocumentsPage() {
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [pageError, setPageError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<TIngestionDocument | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [reingestingIds, setReingestingIds] = useState<Set<string>>(new Set());
+
+  const handleReingestDocument = async (doc: TIngestionDocument) => {
+    setReingestingIds((prev) => new Set(prev).add(doc.id));
+    try {
+      const updated = await backendApi.create<TBackendDocument, undefined>(
+        `/documents/${doc.id}/reingest`,
+        undefined,
+      );
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === doc.id ? mapBackendDocument(updated) : d)),
+      );
+      toast.success(`"${doc.filename}" re-queued for ingestion.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Could not re-ingest document."));
+    } finally {
+      setReingestingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(doc.id);
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await backendApi.delete("/documents", deleteTarget.id);
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      toast.success(`"${deleteTarget.filename}" deleted.`);
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Could not delete document."));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -383,6 +433,31 @@ export default function DocumentsPage() {
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReingestDocument(document);
+                              }}
+                              disabled={reingestingIds.has(document.id)}
+                              className="p-1 rounded-md hover:bg-indigo-50 hover:text-indigo-600 text-gray-400 transition-all disabled:opacity-50"
+                              title="Re-ingest document"
+                            >
+                              {reingestingIds.has(document.id) ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="size-3.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget(document);
+                              }}
+                              className="p-1 rounded-md hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all"
+                              title="Delete document"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
                             <ArrowUpRight className="size-3.5 text-indigo-500" />
                           </div>
                         </td>
@@ -395,6 +470,47 @@ export default function DocumentsPage() {
           </div>
         </div>
       </main>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null); }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="size-4 text-red-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-base">Delete document</DialogTitle>
+                <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
+              </div>
+            </div>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 py-1">
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-gray-900">"{deleteTarget?.filename}"</span>?
+            All chunks will be removed.
+          </p>
+          <DialogFooter className="gap-2 mt-2">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+              className="flex-1 h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteDocument}
+              disabled={isDeleting}
+              className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              {isDeleting && <Loader2 className="size-4 animate-spin" />}
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -141,6 +141,7 @@ export default function AutoModePage() {
       buildDocumentStatusStreamUrl({
         documentId,
       }),
+      { withCredentials: true },
     );
 
     const handleStatus = (event: MessageEvent<string>) => {

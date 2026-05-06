@@ -1,27 +1,31 @@
 import { useEffect } from "react";
-import { Navigate, Outlet, useLocation } from "react-router";
+import { Outlet } from "react-router";
 import Sidebar from "@/components/app/sidebar";
-import { getStoredUser } from "@/core/auth";
+import { backendApi } from "@/core/api";
 import { useGlobalStore } from "@/core/global-store/index";
 import LoadingPage from "@/pages/loading";
 
 export default function PrivateLayout() {
-  const location = useLocation();
   const user = useGlobalStore((state) => state.user);
   const setUser = useGlobalStore((state) => state.setUser);
 
   useEffect(() => {
-    if (user === undefined) {
-      setUser(getStoredUser());
-    }
-  }, [setUser, user]);
+    if (user !== undefined) return;
+
+    backendApi
+      .fetchMe()
+      .then((u) => setUser(u))
+      .catch(() => {
+        setUser(null);
+      });
+  }, [user, setUser]);
 
   if (user === undefined) {
     return <LoadingPage />;
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace state={{ from: location }} />;
+    return <LoadingPage />;
   }
 
   return (

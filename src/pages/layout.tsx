@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 
 export default function GlobalLayout() {
   return (
-    <div className="min-h-screen flex flex-col dark bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Outlet />
       <Toaster
         richColors

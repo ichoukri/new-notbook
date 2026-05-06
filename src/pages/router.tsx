@@ -7,7 +7,6 @@ const GlobalLayout = lazy(() => import("@/pages/layout"));
 const PrivateLayout = lazy(() => import("@/pages/private/layout"));
 
 /** Public pages */
-const LoginPage = lazy(() => import("@/pages/public/auth"));
 const NotFoundPage = lazy(() => import("@/pages/public/not-found"));
 const ForbiddenPage = lazy(() => import("@/pages/public/403"));
 const InternalServerErrorPage = lazy(() => import("@/pages/public/500"));
@@ -49,7 +48,6 @@ export default function Router() {
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
             {/* Public + misc */}
-            <Route path="auth" element={<LoginPage />} />
             <Route path="403" element={<ForbiddenPage />} />
             <Route path="500" element={<InternalServerErrorPage />} />
             <Route path="503" element={<ServiceUnavailablePage />} />
