@@ -1,9 +1,26 @@
 import { env } from "@/config/env";
-import axios, { type AxiosInstance } from "axios";
+import axios, { AxiosError, type AxiosInstance } from "axios";
 import { useGlobalStore } from "@/core/global-store/index";
-import type { TUser } from "../types";
+import type { AuthErrorKind, TUser } from "../types";
 
 const setUser = useGlobalStore.getState().setUser;
+
+export class NoTenantError extends Error {
+  constructor() {
+    super("No tenant assigned to this user");
+    this.name = "NoTenantError";
+  }
+}
+
+export function classifyAuthError(error: unknown): AuthErrorKind {
+  if (error instanceof NoTenantError) return "forbidden";
+  if (error instanceof AxiosError) {
+    const status = error.response?.status;
+    if (status === 403) return "forbidden";
+    if (status === 503 || status === undefined) return "unavailable";
+  }
+  return "unknown";
+}
 
 function redirectToAuthLogin(): void {
   const redirectUri = window.location.href;
@@ -112,12 +129,15 @@ class BackendApi {
       is_active?: boolean;
     }>("/me");
     const data = response.data;
+    if (!data.tenant_id) {
+      throw new NoTenantError();
+    }
     return {
       id: data.id,
       email: data.email ?? undefined,
       username: data.username ?? undefined,
       roleId: data.role_id ?? null,
-      tenantId: data.tenant_id ?? null,
+      tenantId: data.tenant_id,
     };
   }
 

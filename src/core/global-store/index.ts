@@ -1,4 +1,4 @@
-import { type TUser } from "@/core/types";
+import { type AuthErrorKind, type TUser } from "@/core/types";
 import { create } from "zustand";
 
 type TConfirmConfig = {
@@ -17,6 +17,7 @@ const defaultConfirmConfig: TConfirmConfig = {
 
 type TState = {
   user: TUser | undefined | null;
+  authError: AuthErrorKind | null;
   headerTitle: string;
   confirmDialogOpen: boolean;
   confirmConfig: TConfirmConfig;
@@ -26,6 +27,7 @@ type TState = {
 
 type TActions = {
   setUser: (user: TUser | undefined | null) => void;
+  setAuthError: (error: AuthErrorKind | null) => void;
   setHeaderTitle: (title?: string) => void;
   confirm: (config: TConfirmConfig) => void;
   closeConfirm: () => void;
@@ -36,6 +38,7 @@ export type TGlobalStore = TState & TActions;
 
 const initialState: TState = {
   user: undefined,
+  authError: null,
   headerTitle: "",
   confirmDialogOpen: false,
   confirmConfig: defaultConfirmConfig,
@@ -50,6 +53,7 @@ const initialState: TState = {
 export const useGlobalStore = create<TGlobalStore>((set) => ({
   ...initialState,
   setUser: (user) => set({ user }),
+  setAuthError: (authError) => set({ authError }),
   setHeaderTitle: (title = "") => set({ headerTitle: title }),
   confirm: (config) =>
     set({
