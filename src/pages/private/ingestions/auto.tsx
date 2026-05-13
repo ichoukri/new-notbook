@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { Button } from "@/components/ui/button";
 import { backendApi } from "@/core/api";
-import { getApiErrorMessage } from "@/core/api/error";
+import { getApiErrorMessage, getApiErrorStatus } from "@/core/api/error";
 import {
   type TBackendDataset,
   type TDataset,
@@ -22,6 +22,8 @@ import {
   getDocumentPreview,
   getDocumentStatusLabel,
   getIngestionError,
+  getIngestionErrorTraceback,
+  getIngestionFailedStage,
   getIngestionLogs,
   getIngestionMetrics,
   getIngestionPipeline,
@@ -257,7 +259,16 @@ export default function AutoModePage() {
       setChunks([]);
       toast.success("Ingestion restarted.");
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not retry ingestion."));
+      // 409 means the backend already has a task running for this document
+      // (e.g. the user clicked retry twice quickly). Surface that as info,
+      // not error — there's nothing wrong, the work is just already underway.
+      if (getApiErrorStatus(error) === 409) {
+        toast.info(
+          getApiErrorMessage(error, "Ingestion is already running."),
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, "Could not retry ingestion."));
+      }
     } finally {
       setIsRetrying(false);
     }
@@ -303,6 +314,8 @@ export default function AutoModePage() {
         document={document}
         datasetName={datasetName}
         errorMessage={ingestionError || "Ingestion failed."}
+        errorTraceback={getIngestionErrorTraceback(document)}
+        failedStage={getIngestionFailedStage(document)}
         logs={logs}
         onRetry={() => void handleRetry()}
         isRetrying={isRetrying}
@@ -750,6 +763,8 @@ function ErrorState({
   document,
   datasetName,
   errorMessage,
+  errorTraceback,
+  failedStage,
   logs,
   onRetry,
   isRetrying,
@@ -757,25 +772,52 @@ function ErrorState({
   document: TIngestionDocument;
   datasetName: string;
   errorMessage: string;
+  errorTraceback: string | null;
+  failedStage: string | null;
   logs: TIngestionLog[];
   onRetry: () => void;
   isRetrying: boolean;
 }) {
+  const [showTraceback, setShowTraceback] = useState(false);
+
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Topbar title="Ingestion Failed" breadcrumbs={[{ label: "Ingestions" }]} />
       <main className="flex-1 p-6 flex items-center justify-center">
-        <div className="max-w-lg w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
-            <AlertCircle className="size-8 text-red-500" />
+        <div className="max-w-2xl w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
+              <AlertCircle className="size-8 text-red-500" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Ingestion Failed</h2>
+            <p className="text-sm text-gray-500 mb-2">
+              {document.filename} could not finish processing into {datasetName}.
+            </p>
+            {failedStage && (
+              <p className="text-xs text-gray-500 mb-2">
+                Stage: <span className="font-medium text-gray-700">{getDocumentStatusLabel(failedStage)}</span>
+              </p>
+            )}
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Ingestion Failed</h2>
-          <p className="text-sm text-gray-500 mb-2">
-            {document.filename} could not finish processing into {datasetName}.
-          </p>
-          <p className="text-xs text-red-600 bg-red-50 rounded-xl px-4 py-3 mb-6 text-left">
+          <p className="text-xs text-red-600 bg-red-50 rounded-xl px-4 py-3 mb-4 text-left whitespace-pre-wrap wrap-break-word">
             {errorMessage}
           </p>
+          {errorTraceback && (
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => setShowTraceback((v) => !v)}
+                className="text-xs text-gray-500 hover:text-gray-700 underline mb-2"
+              >
+                {showTraceback ? "Hide" : "Show"} technical details
+              </button>
+              {showTraceback && (
+                <pre className="text-[11px] text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre font-mono">
+                  {errorTraceback}
+                </pre>
+              )}
+            </div>
+          )}
           <div className="flex gap-2 justify-center">
             <Button size="sm" onClick={onRetry} disabled={isRetrying}>
               {isRetrying ? (

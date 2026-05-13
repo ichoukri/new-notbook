@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { backendApi } from "@/core/api";
-import { getApiErrorMessage } from "@/core/api/error";
+import { getApiErrorMessage, getApiErrorStatus } from "@/core/api/error";
 import {
   type TBackendDocumentSearchHit,
   getChunkEmbeddingMode,
@@ -35,6 +35,9 @@ import { type TBackendDataset, formatFileSize, mapBackendDataset } from "@/core/
 import {
   type TBackendChunk,
   type TBackendDocument,
+  getIngestionError,
+  getIngestionErrorTraceback,
+  getIngestionFailedStage,
   getIngestionMetrics,
   mapBackendChunk,
   mapBackendDocument,
@@ -238,9 +241,24 @@ export default function DocumentDetailPage() {
   const failureMessage = useMemo(() => {
     if (!document) return null;
     if (document.processingStatus !== "failed") return null;
+    // Prefer the structured error from processing_details (set by the backend
+    // ingestion task). Fall back to the most-recent error log line, then a
+    // generic default.
+    const detailsError = getIngestionError(document);
+    if (detailsError) return detailsError;
     const errorLog = [...logs].reverse().find((log) => log.level === "error");
     return errorLog?.message ?? "Ingestion failed. Re-run to try again.";
   }, [document, logs]);
+
+  const failureTraceback = useMemo(
+    () => (document ? getIngestionErrorTraceback(document) : null),
+    [document],
+  );
+  const failureStage = useMemo(
+    () => (document ? getIngestionFailedStage(document) : null),
+    [document],
+  );
+  const [showTraceback, setShowTraceback] = useState(false);
 
   const pageCount = document ? getDocumentPageCount(document, chunks) : null;
   const chunkCount = document ? getDocumentChunkCount(document, chunks) : 0;
@@ -282,7 +300,14 @@ export default function DocumentDetailPage() {
       toast.success("Ingestion restarted.");
       navigate(`/ingestions/auto?document_id=${document.id}&dataset_id=${datasetId}`);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not restart ingestion."));
+      if (getApiErrorStatus(error) === 409) {
+        toast.info(
+          getApiErrorMessage(error, "Ingestion is already running."),
+        );
+        navigate(`/ingestions/auto?document_id=${document.id}&dataset_id=${datasetId}`);
+      } else {
+        toast.error(getApiErrorMessage(error, "Could not restart ingestion."));
+      }
     } finally {
       setIsRetrying(false);
     }
@@ -461,11 +486,38 @@ export default function DocumentDetailPage() {
             </div>
 
             {failureMessage && (
-              <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <AlertCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-red-700">Ingestion failed</p>
-                  <p className="text-xs text-red-600/90 mt-0.5 break-words">{failureMessage}</p>
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="size-4 text-red-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-red-700">
+                      Ingestion failed
+                      {failureStage && (
+                        <span className="ml-2 text-xs font-normal text-red-600/80">
+                          at {failureStage} stage
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-red-600/90 mt-0.5 wrap-break-word whitespace-pre-wrap">
+                      {failureMessage}
+                    </p>
+                    {failureTraceback && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShowTraceback((v) => !v)}
+                          className="text-xs text-red-700 hover:text-red-900 underline mt-2"
+                        >
+                          {showTraceback ? "Hide" : "Show"} technical details
+                        </button>
+                        {showTraceback && (
+                          <pre className="mt-2 text-[11px] text-gray-800 bg-white border border-red-200 rounded-lg px-3 py-2 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre font-mono">
+                            {failureTraceback}
+                          </pre>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

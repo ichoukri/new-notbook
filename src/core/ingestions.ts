@@ -199,7 +199,6 @@ function getCurrentPipelineStep(
   }
 
   switch (document.processingStatus) {
-    case "uploading":
     case "queued":
     case "pending":
       return "load_detect";
@@ -425,6 +424,20 @@ export function getIngestionError(document: TIngestionDocument): string | null {
   return getString(details?.error);
 }
 
+export function getIngestionErrorTraceback(
+  document: TIngestionDocument,
+): string | null {
+  const details = getRecord(document.processingDetails);
+  return getString(details?.error_traceback);
+}
+
+export function getIngestionFailedStage(
+  document: TIngestionDocument,
+): string | null {
+  const details = getRecord(document.processingDetails);
+  return getString(details?.failed_stage);
+}
+
 export function getDocumentPreview(chunks: TIngestionChunk[]): string | null {
   for (const chunk of chunks) {
     const value = chunk.summaryContent.trim() || chunk.textContent.trim();
@@ -456,8 +469,6 @@ export function formatIngestionLogTime(value: string): string {
 
 export function getDocumentStatusLabel(status: string): string {
   switch (status) {
-    case "uploading":
-      return "Uploading";
     case "queued":
       return "Queued";
     case "partitioning":
