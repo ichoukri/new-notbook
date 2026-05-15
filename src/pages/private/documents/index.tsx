@@ -30,7 +30,7 @@ import {
   mapBackendDataset,
 } from "@/core/datasets";
 import {
-  type TBackendDocument,
+  type TBackendDocumentMutationResponse,
   type TIngestionDocument,
   mapBackendDocument,
 } from "@/core/ingestions";
@@ -102,12 +102,14 @@ export default function DocumentsPage() {
   const handleReingestDocument = async (doc: TIngestionDocument) => {
     setReingestingIds((prev) => new Set(prev).add(doc.id));
     try {
-      const updated = await backendApi.create<TBackendDocument, undefined>(
-        `/documents/${doc.id}/reingest`,
-        undefined,
-      );
+      const response = await backendApi.create<
+        TBackendDocumentMutationResponse,
+        undefined
+      >(`/documents/${doc.id}/reingest`, undefined);
       setDocuments((prev) =>
-        prev.map((d) => (d.id === doc.id ? mapBackendDocument(updated) : d)),
+        prev.map((d) =>
+          d.id === doc.id ? mapBackendDocument(response.data) : d,
+        ),
       );
       toast.success(`"${doc.filename}" re-queued for ingestion.`);
     } catch (err) {

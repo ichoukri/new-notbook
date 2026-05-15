@@ -203,11 +203,6 @@ export default function NewIngestionPage() {
       return;
     }
 
-    if (mode !== "auto") {
-      toast.info("Guided mode is not connected to the backend yet.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -235,7 +230,9 @@ export default function NewIngestionPage() {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-      // Step 4: Finalize upload and start processing
+      // Step 4: Finalize upload and start processing. Pass ``mode`` so the
+      // backend orchestrator decides whether to chain (auto) or pause after
+      // each stage (guided).
       const finalizeResponse = await backendApi.create<
         TBackendDocumentMutationResponse,
         TBackendFinalizeRequest
@@ -246,9 +243,17 @@ export default function NewIngestionPage() {
         file_size: file.size,
         sha256,
         content_type: file.type || null,
+        mode,
       });
 
-      toast.success("Auto ingestion started.");
+      toast.success(
+        mode === "guided"
+          ? "Guided ingestion started. You'll be asked to approve each stage."
+          : "Auto ingestion started.",
+      );
+      // Both modes use the same status page for now — the page renders an
+      // "Awaiting your review" panel when status hits a ``*_AWAITING_APPROVAL``
+      // state, and the standard in-progress UI otherwise.
       navigate(
         `/ingestions/auto?document_id=${finalizeResponse.data.id}&dataset_id=${selectedDataset}`,
       );
@@ -262,7 +267,7 @@ export default function NewIngestionPage() {
   };
 
   const canStart =
-    Boolean(selectedDataset) && Boolean(file) && mode === "auto" && !isSubmitting;
+    Boolean(selectedDataset) && Boolean(file) && !isSubmitting;
   const filledCount = [Boolean(selectedDataset), Boolean(file), true].filter(Boolean).length;
 
   const hint =
@@ -423,17 +428,13 @@ export default function NewIngestionPage() {
               />
               <ModeCard
                 selected={mode === "guided"}
-                onSelect={() => {
-                  setMode("guided");
-                  toast.info("Guided mode is not connected yet.");
-                }}
+                onSelect={() => setMode("guided")}
                 accent="violet"
                 icon={ClipboardList}
-                badge="Unavailable"
+                badge="Backend Ready"
                 title="Guided Mode"
-                description="The frontend flow exists, but the backend review workflow is not implemented yet."
-                time="Blocked"
-                disabled
+                description="Review and approve each stage: extract, chunk, summarize, embed, index."
+                time="~5–10 min"
               />
             </div>
           </Field>
@@ -488,8 +489,14 @@ export default function NewIngestionPage() {
                 </>
               ) : canStart ? (
                 <>
-                  <Zap className="size-4" />
-                  Start Auto Ingestion
+                  {mode === "guided" ? (
+                    <ClipboardList className="size-4" />
+                  ) : (
+                    <Zap className="size-4" />
+                  )}
+                  {mode === "guided"
+                    ? "Start Guided Ingestion"
+                    : "Start Auto Ingestion"}
                   <ArrowRight className="size-4" />
                 </>
               ) : (

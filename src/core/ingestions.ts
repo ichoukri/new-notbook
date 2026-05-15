@@ -1,5 +1,7 @@
 import { env } from "@/config/env";
 
+export type TDocumentMode = "auto" | "guided";
+
 export type TBackendDocument = {
   id: string;
   hash: string;
@@ -14,6 +16,7 @@ export type TBackendDocument = {
   task_id?: string | null;
   dataset_ids: string[];
   processing_status: string;
+  mode?: TDocumentMode;
   processing_details?: Record<string, unknown> | null;
 };
 
@@ -45,6 +48,7 @@ export type TBackendFinalizeRequest = {
   file_size: number;
   sha256: string;
   content_type: string | null;
+  mode?: TDocumentMode;
 };
 
 export type TBackendChunk = {
@@ -54,7 +58,7 @@ export type TBackendChunk = {
   chunk_version: number;
   page_number?: number | null;
   text_content: string;
-  summary_content: string;
+  summary_content: string | null;
   char_count: number;
   token_count?: number | null;
   content_types: string[];
@@ -115,6 +119,7 @@ export type TIngestionDocument = {
   taskId?: string | null;
   datasetIds: string[];
   processingStatus: string;
+  mode: TDocumentMode;
   processingDetails: Record<string, unknown> | null;
 };
 
@@ -125,7 +130,7 @@ export type TIngestionChunk = {
   chunkVersion: number;
   pageNumber?: number | null;
   textContent: string;
-  summaryContent: string;
+  summaryContent: string | null;
   charCount: number;
   tokenCount?: number | null;
   contentTypes: string[];
@@ -203,16 +208,21 @@ function getCurrentPipelineStep(
     case "pending":
       return "load_detect";
     case "partitioning":
+    case "partitioning_awaiting_approval":
       return "extract";
     case "chunking":
+    case "chunking_awaiting_approval":
       return "chunking";
     case "summarising":
+    case "summarising_awaiting_approval":
       return "embed_text";
     case "vectorization":
+    case "vectorization_awaiting_approval":
       return "embedding";
     case "completed":
       return "index";
     case "failed":
+    case "cancelled":
       return "load_detect";
     default:
       return "load_detect";
@@ -238,6 +248,7 @@ export function mapBackendDocument(document: TBackendDocument): TIngestionDocume
     taskId: document.task_id ?? null,
     datasetIds: document.dataset_ids,
     processingStatus: document.processing_status,
+    mode: document.mode ?? "auto",
     processingDetails: document.processing_details ?? null,
   };
 }
@@ -438,9 +449,50 @@ export function getIngestionFailedStage(
   return getString(details?.failed_stage);
 }
 
+// Maps backend ``*_AWAITING_APPROVAL`` status strings to the ``{stage}`` slug
+// the approve endpoint expects. Returns null when the document isn't paused
+// for approval.
+const _AWAITING_APPROVAL_STAGE_MAP: Record<string, string> = {
+  partitioning_awaiting_approval: "partition",
+  chunking_awaiting_approval: "chunking",
+  summarising_awaiting_approval: "summarising",
+  vectorization_awaiting_approval: "vectorization",
+};
+
+export function getAwaitingApprovalStage(
+  document: TIngestionDocument,
+): string | null {
+  return _AWAITING_APPROVAL_STAGE_MAP[document.processingStatus] ?? null;
+}
+
+export function isAwaitingApproval(document: TIngestionDocument): boolean {
+  return getAwaitingApprovalStage(document) !== null;
+}
+
+/**
+ * Extract image URLs from a chunk's ``originalContent.images``.
+ *
+ * Backend stores these as chunk-asset paths (e.g.
+ * ``/api/v1/chunks/assets/{doc}/{v}/{i}/foo.jpg``). Returns them as-is —
+ * call ``buildChunkAssetUrl`` from ``@/core/api`` when constructing an
+ * ``<img src>`` so the absolute URL hits the right backend origin.
+ *
+ * Returns an empty array when no images are present or when
+ * ``originalContent`` has an unexpected shape.
+ */
+export function getChunkImageUrls(chunk: TIngestionChunk): string[] {
+  const oc = chunk.originalContent;
+  if (!oc || typeof oc !== "object") return [];
+  const images = (oc as Record<string, unknown>).images;
+  if (!Array.isArray(images)) return [];
+  return images.filter((value): value is string => typeof value === "string");
+}
+
 export function getDocumentPreview(chunks: TIngestionChunk[]): string | null {
   for (const chunk of chunks) {
-    const value = chunk.summaryContent.trim() || chunk.textContent.trim();
+    const value =
+      (chunk.summaryContent ?? "").trim() ||
+      (chunk.textContent ?? "").trim();
     if (value) {
       return value;
     }
@@ -479,10 +531,20 @@ export function getDocumentStatusLabel(status: string): string {
       return "Summarising";
     case "vectorization":
       return "Vectorizing";
+    case "partitioning_awaiting_approval":
+      return "Awaiting review (extract)";
+    case "chunking_awaiting_approval":
+      return "Awaiting review (chunks)";
+    case "summarising_awaiting_approval":
+      return "Awaiting review (summaries)";
+    case "vectorization_awaiting_approval":
+      return "Awaiting review (vectors)";
     case "completed":
       return "Completed";
     case "failed":
       return "Failed";
+    case "cancelled":
+      return "Cancelled";
     default:
       return status;
   }

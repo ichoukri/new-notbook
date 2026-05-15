@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { Button } from "@/components/ui/button";
-import { backendApi } from "@/core/api";
+import { backendApi, buildChunkAssetUrl } from "@/core/api";
 import { getApiErrorMessage, getApiErrorStatus } from "@/core/api/error";
 import {
   type TBackendDataset,
@@ -19,6 +19,8 @@ import {
   type TIngestionLog,
   buildDocumentStatusStreamUrl,
   formatIngestionLogTime,
+  getAwaitingApprovalStage,
+  getChunkImageUrls,
   getDocumentPreview,
   getDocumentStatusLabel,
   getIngestionError,
@@ -44,9 +46,11 @@ import {
   FileText,
   Layers,
   Loader2,
+  Pause,
   RefreshCw,
   Sparkles,
   Upload,
+  X,
 } from "lucide-react";
 
 type MetricCardStatus = "complete" | "active" | "pending" | "error";
@@ -64,6 +68,9 @@ export default function AutoModePage() {
   const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const [pageError, setPageError] = useState("");
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [partitionOutput, setPartitionOutput] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +207,11 @@ export default function AutoModePage() {
     const shouldLoadChunks =
       document.processingStatus === "vectorization" ||
       document.processingStatus === "completed" ||
-      document.processingStatus === "failed";
+      document.processingStatus === "failed" ||
+      // Guided pauses need the chunk list visible for review.
+      document.processingStatus === "chunking_awaiting_approval" ||
+      document.processingStatus === "summarising_awaiting_approval" ||
+      document.processingStatus === "vectorization_awaiting_approval";
 
     if (!shouldLoadChunks) {
       return;
@@ -240,6 +251,35 @@ export default function AutoModePage() {
     };
   }, [document?.id, document?.processingStatus, document?.updatedAt]);
 
+  // Fetch the partition stage's output when paused for partition review.
+  // The backend returns a small dict like
+  // ``{"elements_found": {"text": 46, "titles": 43, ...}}`` which we display
+  // as a per-element-type breakdown in the AwaitingApprovalState.
+  useEffect(() => {
+    if (!document?.id) {
+      setPartitionOutput(null);
+      return;
+    }
+    if (document.processingStatus !== "partitioning_awaiting_approval") {
+      setPartitionOutput(null);
+      return;
+    }
+    let cancelled = false;
+    backendApi
+      .get<{ stage: string; output: Record<string, unknown> | null }>(
+        `/documents/${document.id}/stages/partition/output`,
+      )
+      .then((response) => {
+        if (!cancelled) setPartitionOutput(response.output ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPartitionOutput(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [document?.id, document?.processingStatus]);
+
   const handleRetry = async () => {
     if (!document?.id || !effectiveDatasetId || isRetrying) {
       return;
@@ -271,6 +311,47 @@ export default function AutoModePage() {
       }
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!document?.id || isApproving) return;
+    const stage = getAwaitingApprovalStage(document);
+    if (!stage) return;
+
+    setIsApproving(true);
+    try {
+      const response = await backendApi.create<
+        TBackendDocumentMutationResponse,
+        undefined
+      >(`/documents/${document.id}/stages/${stage}/approve`, undefined);
+      setDocument(mapBackendDocument(response.data));
+      toast.success("Stage approved. Continuing to the next step.");
+    } catch (error) {
+      if (getApiErrorStatus(error) === 409) {
+        toast.info(getApiErrorMessage(error, "Ingestion is already running."));
+      } else {
+        toast.error(getApiErrorMessage(error, "Could not approve this stage."));
+      }
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!document?.id || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      const response = await backendApi.create<
+        TBackendDocumentMutationResponse,
+        undefined
+      >(`/documents/${document.id}/cancel`, undefined);
+      setDocument(mapBackendDocument(response.data));
+      toast.success("Ingestion cancelled.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not cancel ingestion."));
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -331,6 +412,34 @@ export default function AutoModePage() {
         datasetName={datasetName}
         metrics={metrics}
         onNavigate={navigate}
+      />
+    );
+  }
+
+  if (document.processingStatus === "cancelled") {
+    return (
+      <CancelledState
+        document={document}
+        datasetName={datasetName}
+        onNavigate={navigate}
+      />
+    );
+  }
+
+  const awaitingStage = getAwaitingApprovalStage(document);
+  if (awaitingStage) {
+    return (
+      <AwaitingApprovalState
+        document={document}
+        datasetName={datasetName}
+        stage={awaitingStage}
+        chunks={chunks}
+        isLoadingChunks={isLoadingChunks}
+        partitionOutput={partitionOutput}
+        onApprove={() => void handleApprove()}
+        onCancel={() => void handleCancel()}
+        isApproving={isApproving}
+        isCancelling={isCancelling}
       />
     );
   }
@@ -837,6 +946,315 @@ function ErrorState({
               Download Logs
             </Button>
           </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  partition: "Extraction",
+  chunking: "Chunking",
+  summarising: "Summarisation",
+  vectorization: "Vectorisation",
+};
+
+const STAGE_DESCRIPTIONS: Record<string, string> = {
+  partition: "The document has been partitioned. Review the extracted structure and approve to continue with chunking.",
+  chunking: "Chunks have been generated. Review them and approve to continue with summarisation.",
+  summarising: "AI summaries are ready. Review the search-ready content and approve to continue with vectorisation.",
+  vectorization: "Vectors are written. Approve to finalize the document and make it searchable.",
+};
+
+function AwaitingApprovalState({
+  document,
+  datasetName,
+  stage,
+  chunks,
+  isLoadingChunks,
+  partitionOutput,
+  onApprove,
+  onCancel,
+  isApproving,
+  isCancelling,
+}: {
+  document: TIngestionDocument;
+  datasetName: string;
+  stage: string;
+  chunks: TIngestionChunk[];
+  isLoadingChunks: boolean;
+  partitionOutput: Record<string, unknown> | null;
+  onApprove: () => void;
+  onCancel: () => void;
+  isApproving: boolean;
+  isCancelling: boolean;
+}) {
+  const stageLabel = STAGE_DISPLAY_NAMES[stage] ?? stage;
+  const description =
+    STAGE_DESCRIPTIONS[stage] ??
+    "Review the output of this stage and approve to continue.";
+
+  return (
+    <div className="flex flex-col flex-1 overflow-auto">
+      <Topbar title="Guided Ingestion" breadcrumbs={[{ label: "Ingestions" }]} />
+      <main className="flex-1 overflow-auto">
+        <div className="max-w-[1200px] mx-auto w-full px-8 py-7 space-y-5">
+          {/* Header card */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+                <Pause className="size-6 text-violet-600" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-gray-900">
+                  {stageLabel} complete — awaiting your approval
+                </h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
+                  <span className="truncate">{document.filename}</span>
+                  <span>·</span>
+                  <span>{datasetName}</span>
+                  <span>·</span>
+                  <span className="px-2 py-0.5 bg-violet-50 text-violet-700 rounded font-medium">
+                    Guided Mode
+                  </span>
+                </div>
+                <p className="text-sm text-gray-700 mt-3">{description}</p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isApproving || isCancelling}
+              >
+                {isCancelling ? (
+                  <Loader2 className="size-4 mr-1.5 animate-spin" />
+                ) : (
+                  <X className="size-4 mr-1.5" />
+                )}
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={onApprove}
+                disabled={isApproving || isCancelling}
+              >
+                {isApproving ? (
+                  <Loader2 className="size-4 mr-1.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-4 mr-1.5" />
+                )}
+                Approve &amp; Continue
+              </Button>
+            </div>
+          </div>
+
+          {/* Per-stage review content */}
+          {stage === "partition" && (
+            <PartitionReview output={partitionOutput} />
+          )}
+          {(stage === "chunking" ||
+            stage === "summarising" ||
+            stage === "vectorization") && (
+            <ChunkReview
+              chunks={chunks}
+              isLoading={isLoadingChunks}
+              stage={stage}
+            />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function PartitionReview({
+  output,
+}: {
+  output: Record<string, unknown> | null;
+}) {
+  if (!output) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-sm text-gray-500">
+        Loading partition output…
+      </div>
+    );
+  }
+  const elementsFound = output.elements_found;
+  if (!elementsFound || typeof elementsFound !== "object") {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-sm text-gray-500">
+        No partition summary available yet.
+      </div>
+    );
+  }
+  const entries = Object.entries(elementsFound as Record<string, unknown>)
+    .map(([key, value]) => [key, Number(value) || 0] as const)
+    .filter(([, count]) => count >= 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((sum, [, n]) => sum + n, 0);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Layers className="size-4 text-violet-600" />
+        <h3 className="font-semibold text-gray-900">Extracted structure</h3>
+        <span className="text-xs text-gray-500 ml-auto">
+          {total} elements total
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {entries.map(([type, count]) => (
+          <div
+            key={type}
+            className="bg-gray-50 rounded-xl px-4 py-3 text-center"
+          >
+            <p className="text-2xl font-bold text-gray-900">{count}</p>
+            <p className="text-xs text-gray-500 mt-1 capitalize">{type}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChunkReview({
+  chunks,
+  isLoading,
+  stage,
+}: {
+  chunks: TIngestionChunk[];
+  isLoading: boolean;
+  stage: string;
+}) {
+  // Which content to surface depends on which stage just finished.
+  //   chunking_awaiting_approval     → text_content (no summaries yet)
+  //   summarising_awaiting_approval  → summary_content (the AI summary)
+  //   vectorization_awaiting_approval → summary_content (already vectorized)
+  const showSummary = stage !== "chunking";
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center justify-center text-sm text-gray-500 gap-2">
+        <Loader2 className="size-4 animate-spin" />
+        Loading chunks…
+      </div>
+    );
+  }
+
+  if (chunks.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-sm text-gray-500">
+        No chunks available yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+      <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
+        <Layers className="size-4 text-violet-600" />
+        <h3 className="font-semibold text-gray-900">
+          {showSummary ? "Chunk summaries" : "Chunk content"}
+        </h3>
+        <span className="text-xs text-gray-500 ml-auto">
+          {chunks.length} chunks · version {chunks[0]?.chunkVersion}
+        </span>
+      </div>
+      <div className="max-h-[600px] overflow-y-auto divide-y divide-gray-100">
+        {chunks.map((chunk) => {
+          const body = showSummary
+            ? chunk.summaryContent || chunk.textContent
+            : chunk.textContent || chunk.summaryContent;
+          const imageUrls = getChunkImageUrls(chunk);
+          return (
+            <div key={chunk.id} className="px-6 py-4">
+              <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                <span className="font-mono">#{chunk.chunkIndex}</span>
+                {chunk.pageNumber != null && (
+                  <span className="px-2 py-0.5 bg-gray-100 rounded">
+                    page {chunk.pageNumber}
+                  </span>
+                )}
+                <span>{chunk.charCount} chars</span>
+                {imageUrls.length > 0 && (
+                  <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded">
+                    {imageUrls.length} image{imageUrls.length === 1 ? "" : "s"}
+                  </span>
+                )}
+                {chunk.contentTypes?.length > 0 && (
+                  <span className="ml-auto flex gap-1">
+                    {chunk.contentTypes.map((ct) => (
+                      <span
+                        key={ct}
+                        className="px-2 py-0.5 bg-violet-50 text-violet-700 rounded text-[10px] font-medium"
+                      >
+                        {ct}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                {body || (
+                  <span className="text-gray-400 italic">
+                    (empty)
+                  </span>
+                )}
+              </p>
+              {imageUrls.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {imageUrls.map((src, idx) => (
+                    <a
+                      key={`${chunk.id}-img-${idx}`}
+                      href={buildChunkAssetUrl(src)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block w-28 h-28 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 hover:border-violet-400 transition-colors"
+                    >
+                      <img
+                        src={buildChunkAssetUrl(src)}
+                        alt={`chunk ${chunk.chunkIndex} image ${idx + 1}`}
+                        crossOrigin="use-credentials"
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CancelledState({
+  document,
+  datasetName,
+  onNavigate,
+}: {
+  document: TIngestionDocument;
+  datasetName: string;
+  onNavigate: ReturnType<typeof useNavigate>;
+}) {
+  return (
+    <div className="flex flex-col flex-1 overflow-auto">
+      <Topbar title="Ingestion Cancelled" breadcrumbs={[{ label: "Ingestions" }]} />
+      <main className="flex-1 p-6 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <X className="size-6 text-gray-500" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Ingestion cancelled</h2>
+          <p className="text-sm text-gray-500 mb-1">{document.filename}</p>
+          <p className="text-xs text-gray-500 mb-6">{datasetName}</p>
+          <Button onClick={() => onNavigate("/ingestions/new")}>
+            Start new ingestion
+          </Button>
         </div>
       </main>
     </div>

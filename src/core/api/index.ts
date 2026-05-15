@@ -22,6 +22,22 @@ export function classifyAuthError(error: unknown): AuthErrorKind {
   return "unknown";
 }
 
+/**
+ * Turn a backend-stored chunk-asset path (e.g.
+ * "/api/v1/chunks/assets/{doc}/{v}/{i}/foo.jpg") into an absolute URL the
+ * browser can fetch. ``VITE_BACKEND_URL`` already includes the ``/api/v1``
+ * prefix, so we strip it from the base before prepending.
+ */
+const _BACKEND_ORIGIN = env.VITE_BACKEND_URL.replace(/\/api\/v\d+\/?$/, "");
+
+export function buildChunkAssetUrl(storedPath: string): string {
+  if (!storedPath) return storedPath;
+  // Absolute URLs (already-resolved) pass through.
+  if (/^https?:\/\//i.test(storedPath)) return storedPath;
+  const normalized = storedPath.startsWith("/") ? storedPath : `/${storedPath}`;
+  return `${_BACKEND_ORIGIN}${normalized}`;
+}
+
 function redirectToAuthLogin(): void {
   const redirectUri = window.location.href;
   window.location.href = `${env.VITE_AUTH_FRONTEND_URL}/login?redirect_uri=${encodeURIComponent(redirectUri)}`;

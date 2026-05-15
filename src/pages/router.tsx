@@ -21,7 +21,6 @@ const DocumentsPage = lazy(() => import("@/pages/private/documents"));
 const DocumentDetailPage = lazy(() => import("@/pages/private/documents/detail"));
 const NewIngestionPage = lazy(() => import("@/pages/private/ingestions/new"));
 const AutoModePage = lazy(() => import("@/pages/private/ingestions/auto"));
-const GuidedModePage = lazy(() => import("@/pages/private/ingestions/guided"));
 const ChunksPage = lazy(() => import("@/pages/private/chunks"));
 const RetrievalPage = lazy(() => import("@/pages/private/retrieval"));
 const ActivityPage = lazy(() => import("@/pages/private/activity"));
@@ -41,7 +40,6 @@ export default function Router() {
               <Route path="/documents/:id" element={<DocumentDetailPage />} />
               <Route path="/ingestions/new" element={<NewIngestionPage />} />
               <Route path="/ingestions/auto" element={<AutoModePage />} />
-              <Route path="/ingestions/guided" element={<GuidedModePage />} />
               <Route path="/chunks" element={<ChunksPage />} />
               <Route path="/retrieval" element={<RetrievalPage />} />
               <Route path="/activity" element={<ActivityPage />} />
