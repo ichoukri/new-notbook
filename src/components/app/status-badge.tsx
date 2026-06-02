@@ -17,9 +17,15 @@ const STATUS_STYLES: Record<string, string> = {
   summarising: "bg-sky-50 text-sky-700 border-sky-200",
   embedding: "bg-blue-50 text-blue-700 border-blue-200",
   vectorization: "bg-blue-50 text-blue-700 border-blue-200",
+  partitioning_awaiting_approval: "bg-violet-50 text-violet-700 border-violet-200",
+  chunking_awaiting_approval: "bg-violet-50 text-violet-700 border-violet-200",
+  summarising_awaiting_approval: "bg-violet-50 text-violet-700 border-violet-200",
+  vectorization_awaiting_approval: "bg-violet-50 text-violet-700 border-violet-200",
+  metadata_awaiting_approval: "bg-violet-50 text-violet-700 border-violet-200",
   indexed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   failed: "bg-red-50 text-red-700 border-red-200",
+  cancelled: "bg-gray-100 text-gray-600 border-gray-200",
   complete: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 

@@ -39,6 +39,7 @@ export default function Router() {
               <Route path="/documents" element={<DocumentsPage />} />
               <Route path="/documents/:id" element={<DocumentDetailPage />} />
               <Route path="/ingestions/new" element={<NewIngestionPage />} />
+              <Route path="/ingestions/status" element={<AutoModePage />} />
               <Route path="/ingestions/auto" element={<AutoModePage />} />
               <Route path="/chunks" element={<ChunksPage />} />
               <Route path="/retrieval" element={<RetrievalPage />} />

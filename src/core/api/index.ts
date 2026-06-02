@@ -5,6 +5,13 @@ import type { AuthErrorKind, TUser } from "../types";
 
 const setUser = useGlobalStore.getState().setUser;
 
+export type TPaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
+};
+
 export class NoTenantError extends Error {
   constructor() {
     super("No tenant assigned to this user");
@@ -84,6 +91,21 @@ class BackendApi {
   ): Promise<T[]> {
     const response = await this.api.get<T[]>(path, { params });
     return response.data;
+  }
+
+  async findManyWithMeta<T>(
+    path: string,
+    params?: Record<string, string>,
+  ): Promise<TPaginatedResponse<T>> {
+    const response = await this.api.get<T[]>(path, { params });
+    const fallbackCount = response.data.length;
+
+    return {
+      items: response.data,
+      total: Number(response.headers["x-total-count"] ?? fallbackCount),
+      offset: Number(response.headers["x-offset"] ?? params?.offset ?? 0),
+      limit: Number(response.headers["x-limit"] ?? params?.limit ?? fallbackCount),
+    };
   }
 
   async findById<T>(

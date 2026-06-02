@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
+import { env } from "@/config/env";
 import { getApiErrorMessage } from "@/core/api/error";
 import {
   type TBackendDataset,
@@ -42,7 +43,7 @@ import {
 
 type IconComponent = typeof FileText;
 type IngestionMode = "auto" | "guided";
-const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = env.VITE_MAX_UPLOAD_MB * 1024 * 1024;
 const SUPPORTED_FILE_EXTENSIONS = [
   ".pdf",
   ".docx",
@@ -87,7 +88,7 @@ function validateSelectedFile(file: File): string | null {
   }
 
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return "File size exceeds the 500 MB limit.";
+    return `File size exceeds the ${env.VITE_MAX_UPLOAD_MB} MB limit.`;
   }
 
   return null;
@@ -255,7 +256,7 @@ export default function NewIngestionPage() {
       // "Awaiting your review" panel when status hits a ``*_AWAITING_APPROVAL``
       // state, and the standard in-progress UI otherwise.
       navigate(
-        `/ingestions/auto?document_id=${finalizeResponse.data.id}&dataset_id=${selectedDataset}`,
+        `/ingestions/status?document_id=${finalizeResponse.data.id}&dataset_id=${selectedDataset}`,
       );
     } catch (error) {
       toast.error(
@@ -275,7 +276,7 @@ export default function NewIngestionPage() {
       ? "Create or select a dataset to continue"
       : !file
         ? "Upload a file to continue"
-        : "Auto mode is ready";
+        : `${mode === "guided" ? "Guided" : "Auto"} mode is ready`;
 
   return (
     <div className="flex flex-col flex-1 overflow-auto bg-gray-50/60">
@@ -291,7 +292,7 @@ export default function NewIngestionPage() {
             New Ingestion
           </h1>
           <p className="text-sm text-gray-500 mt-2">
-            Upload a document, choose a dataset, and start the automatic pipeline.
+            Upload a document, choose a dataset, and start the ingestion pipeline.
           </p>
         </div>
 
@@ -372,7 +373,9 @@ export default function NewIngestionPage() {
                       </span>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">Max 500 MB</p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Max {env.VITE_MAX_UPLOAD_MB} MB
+                  </p>
                 </div>
               </div>
             ) : (

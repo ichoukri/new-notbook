@@ -298,13 +298,13 @@ export default function DocumentDetailPage() {
       );
       setDocument(mapBackendDocument(response.data));
       toast.success("Ingestion restarted.");
-      navigate(`/ingestions/auto?document_id=${document.id}&dataset_id=${datasetId}`);
+      navigate(`/ingestions/status?document_id=${document.id}&dataset_id=${datasetId}`);
     } catch (error) {
       if (getApiErrorStatus(error) === 409) {
         toast.info(
           getApiErrorMessage(error, "Ingestion is already running."),
         );
-        navigate(`/ingestions/auto?document_id=${document.id}&dataset_id=${datasetId}`);
+        navigate(`/ingestions/status?document_id=${document.id}&dataset_id=${datasetId}`);
       } else {
         toast.error(getApiErrorMessage(error, "Could not restart ingestion."));
       }

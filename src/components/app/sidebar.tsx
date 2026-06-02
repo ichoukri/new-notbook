@@ -27,7 +27,7 @@ const NAV_GROUPS = [
       { label: "Dashboard", icon: LayoutDashboard, path: "/" },
       { label: "Datasets", icon: Database, path: "/datasets" },
       { label: "Documents", icon: FileText, path: "/documents" },
-      { label: "Ingestions", icon: Zap, path: "/ingestions/new", badge: "2" },
+      { label: "Ingestions", icon: Zap, path: "/ingestions/new" },
     ],
   },
   {
@@ -51,6 +51,9 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useGlobalStore((state) => state.user);
+  const workspaceLabel = user?.tenantId
+    ? `Tenant ${user.tenantId.slice(0, 8)}`
+    : "Workspace";
 
   const isActive = (path: string) => {
     if (path === "/") return location.pathname === "/";
@@ -70,8 +73,12 @@ export default function Sidebar() {
             <Sparkles className="size-4 text-white" />
           </div>
           <div className="flex-1 text-left min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate leading-tight">Acme Corp</p>
-            <p className="text-xs text-gray-500 truncate">Enterprise</p>
+            <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
+              {workspaceLabel}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {user?.roleId ? `Role ${user.roleId.slice(0, 8)}` : "Data platform"}
+            </p>
           </div>
           <ChevronDown className="size-3.5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
         </button>
@@ -119,16 +126,6 @@ export default function Sidebar() {
                       )}
                     />
                     <span className="flex-1 truncate">{item.label}</span>
-                    {"badge" in item && item.badge && (
-                      <span className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums min-w-[18px] text-center",
-                        active
-                          ? "bg-indigo-200 text-indigo-800"
-                          : "bg-gray-200 text-gray-600"
-                      )}>
-                        {item.badge}
-                      </span>
-                    )}
                   </NavLink>
                 );
               })}

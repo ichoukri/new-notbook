@@ -577,7 +577,13 @@ export default function AutoModePage() {
   }
 
   return (
-    <IngestionShell title="Auto Mode Ingestion">
+    <IngestionShell
+      title={
+        document.mode === "guided"
+          ? "Guided Ingestion Status"
+          : "Auto Ingestion Status"
+      }
+    >
       <Hero
         icon={FileText}
         title={document.filename}
@@ -1966,7 +1972,7 @@ function CancelledState({
 
 function LoadingState() {
   return (
-    <IngestionShell title="Auto Mode Ingestion" center>
+    <IngestionShell title="Ingestion Status" center>
       <div className="flex items-center gap-3 text-sm text-gray-500">
         <Loader2 className="size-4 animate-spin" />
         Loading ingestion status…
@@ -1983,7 +1989,7 @@ function MissingState({
   onNavigate: ReturnType<typeof useNavigate>;
 }) {
   return (
-    <IngestionShell title="Auto Mode Ingestion" center>
+    <IngestionShell title="Ingestion Status" center>
       <CenteredCard>
         <StatusIcon icon={Upload} tone="gray" />
         <h2 className="mb-2 text-lg font-bold text-gray-900">

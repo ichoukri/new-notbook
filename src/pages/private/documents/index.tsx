@@ -69,8 +69,14 @@ const STATUS_FILTERS = [
   { value: "chunking", label: "Chunking" },
   { value: "summarising", label: "Summarising" },
   { value: "vectorization", label: "Embedding" },
+  { value: "partitioning_awaiting_approval", label: "Awaiting Extract Review" },
+  { value: "chunking_awaiting_approval", label: "Awaiting Chunk Review" },
+  { value: "summarising_awaiting_approval", label: "Awaiting Summary Review" },
+  { value: "vectorization_awaiting_approval", label: "Awaiting Vector Review" },
+  { value: "metadata_awaiting_approval", label: "Awaiting Metadata Review" },
   { value: "completed", label: "Completed" },
   { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
 ] as const;
 
 function downloadCsv(filename: string, content: string) {
@@ -296,6 +302,7 @@ export default function DocumentsPage() {
               <SelectContent>
                 <SelectItem value="all">All Modes</SelectItem>
                 <SelectItem value="auto">Auto</SelectItem>
+                <SelectItem value="guided">Guided</SelectItem>
               </SelectContent>
             </Select>
 
