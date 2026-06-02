@@ -30,6 +30,7 @@ import {
   mapBackendDataset,
 } from "@/core/datasets";
 import {
+  type TBackendDocument,
   type TBackendDocumentMutationResponse,
   type TIngestionDocument,
   mapBackendDocument,

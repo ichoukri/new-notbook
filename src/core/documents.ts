@@ -49,9 +49,8 @@ function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-export function getDocumentMode(_document: TIngestionDocument): "auto" | "guided" {
-  void _document;
-  return "auto";
+export function getDocumentMode(document: TIngestionDocument): "auto" | "guided" {
+  return document.mode === "guided" ? "guided" : "auto";
 }
 
 export function getDocumentDatasetId(document: TIngestionDocument): string | null {

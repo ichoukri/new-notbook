@@ -18,6 +18,20 @@ export type TBackendDocument = {
   processing_status: string;
   mode?: TDocumentMode;
   processing_details?: Record<string, unknown> | null;
+  doc_metadata?: Record<string, unknown> | null;
+  access_policy?: Record<string, unknown> | null;
+};
+
+export type TAccessVisibility = "private" | "tenant" | "roles";
+
+export type TDocumentMetadataPayload = {
+  metadata: Record<string, unknown>;
+  access_policy: {
+    visibility: TAccessVisibility;
+    role_ids: string[];
+    user_ids: string[];
+  };
+  complete: boolean;
 };
 
 export type TBackendDocumentMutationResponse = {
@@ -105,6 +119,21 @@ export type TIngestionLog = {
   step?: string | null;
 };
 
+// Guided-mode chunk-edit operations. Mirrors the backend discriminated union
+// at ``POST /documents/{id}/stages/{stage}/edit``.
+export type TChunkEditOperation =
+  | {
+      op: "edit";
+      chunk_id: string;
+      text_content?: string;
+      summary_content?: string;
+      content_types?: string[];
+      chunk_metadata?: Record<string, unknown>;
+    }
+  | { op: "delete"; chunk_id: string }
+  | { op: "split"; chunk_id: string; segments: string[] }
+  | { op: "merge"; chunk_ids: string[]; separator?: string };
+
 export type TIngestionDocument = {
   id: string;
   hash: string;
@@ -121,6 +150,8 @@ export type TIngestionDocument = {
   processingStatus: string;
   mode: TDocumentMode;
   processingDetails: Record<string, unknown> | null;
+  docMetadata: Record<string, unknown> | null;
+  accessPolicy: Record<string, unknown> | null;
 };
 
 export type TIngestionChunk = {
@@ -219,6 +250,8 @@ function getCurrentPipelineStep(
     case "vectorization":
     case "vectorization_awaiting_approval":
       return "embedding";
+    case "metadata_awaiting_approval":
+      return "metadata";
     case "completed":
       return "index";
     case "failed":
@@ -250,6 +283,8 @@ export function mapBackendDocument(document: TBackendDocument): TIngestionDocume
     processingStatus: document.processing_status,
     mode: document.mode ?? "auto",
     processingDetails: document.processing_details ?? null,
+    docMetadata: document.doc_metadata ?? null,
+    accessPolicy: document.access_policy ?? null,
   };
 }
 
@@ -469,6 +504,13 @@ export function isAwaitingApproval(document: TIngestionDocument): boolean {
   return getAwaitingApprovalStage(document) !== null;
 }
 
+// The final guided-mode gate is handled separately from the stage-approval
+// flow: it has its own ``/metadata`` endpoint (save + finalize) rather than
+// a ``/stages/{stage}/approve`` call.
+export function isMetadataReview(document: TIngestionDocument): boolean {
+  return document.processingStatus === "metadata_awaiting_approval";
+}
+
 /**
  * Extract image URLs from a chunk's ``originalContent.images``.
  *
@@ -539,6 +581,8 @@ export function getDocumentStatusLabel(status: string): string {
       return "Awaiting review (summaries)";
     case "vectorization_awaiting_approval":
       return "Awaiting review (vectors)";
+    case "metadata_awaiting_approval":
+      return "Awaiting review (metadata)";
     case "completed":
       return "Completed";
     case "failed":
