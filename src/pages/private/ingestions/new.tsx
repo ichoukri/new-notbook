@@ -247,11 +247,24 @@ export default function NewIngestionPage() {
         mode,
       });
 
-      toast.success(
-        mode === "guided"
-          ? "Guided ingestion started. You'll be asked to approve each stage."
-          : "Auto ingestion started.",
-      );
+      if (finalizeResponse.revived) {
+        // The file was stranded in PENDING/QUEUED (its task was lost) and the
+        // backend re-queued it — the status page below will now show progress.
+        toast.success(finalizeResponse.message);
+      } else if (finalizeResponse.duplicate && !finalizeResponse.reingested) {
+        // The file is genuinely mid-ingestion in this dataset — open it and
+        // attach to its live stream rather than implying a fresh run started.
+        toast.info(finalizeResponse.message);
+      } else if (finalizeResponse.reingested) {
+        // A previously-finished identical file was re-queued in this mode.
+        toast.success(finalizeResponse.message);
+      } else {
+        toast.success(
+          mode === "guided"
+            ? "Guided ingestion started. You'll be asked to approve each stage."
+            : "Auto ingestion started.",
+        );
+      }
       // Both modes use the same status page for now — the page renders an
       // "Awaiting your review" panel when status hits a ``*_AWAITING_APPROVAL``
       // state, and the standard in-progress UI otherwise.

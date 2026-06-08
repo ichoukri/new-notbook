@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
+import { MarkdownContent } from "@/components/app/markdown";
+import { TableHtml } from "@/components/app/table-html";
 import { ContentTypeBadge, ModeBadge, StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { backendApi } from "@/core/api";
+import { backendApi, buildChunkAssetUrl } from "@/core/api";
 import { getApiErrorMessage, getApiErrorStatus } from "@/core/api/error";
 import {
   type TBackendDocumentSearchHit,
@@ -35,6 +37,8 @@ import { type TBackendDataset, formatFileSize, mapBackendDataset } from "@/core/
 import {
   type TBackendChunk,
   type TBackendDocument,
+  getChunkImageUrls,
+  getChunkTables,
   getIngestionError,
   getIngestionErrorTraceback,
   getIngestionFailedStage,
@@ -641,10 +645,50 @@ export default function DocumentDetailPage() {
                           </tr>,
                         ];
                         if (isOpen) {
+                          const imageUrls = getChunkImageUrls(chunk);
+                          const tables = getChunkTables(chunk);
                           rows.push(
                             <tr key={`${chunk.id}-expanded`} className="bg-gray-50/40">
                               <td colSpan={7} className="px-6 py-4">
                                 <div className="space-y-3">
+                                  {tables.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                                        {tables.length === 1 ? "Table" : `Tables (${tables.length})`}
+                                      </p>
+                                      <div className="space-y-2">
+                                        {tables.map((tableHtml, idx) => (
+                                          <TableHtml key={`${chunk.id}-table-${idx}`} html={tableHtml} />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {imageUrls.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                                        Images ({imageUrls.length})
+                                      </p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {imageUrls.map((src, idx) => (
+                                          <a
+                                            key={`${chunk.id}-img-${idx}`}
+                                            href={buildChunkAssetUrl(src)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block size-28 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 transition-colors hover:border-indigo-400"
+                                          >
+                                            <img
+                                              src={buildChunkAssetUrl(src)}
+                                              alt={`chunk ${chunk.chunkIndex + 1} image ${idx + 1}`}
+                                              crossOrigin="use-credentials"
+                                              loading="lazy"
+                                              className="size-full object-cover"
+                                            />
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                   {chunk.summaryContent && (
                                     <div>
                                       <div className="flex items-center gap-2 mb-1.5">
@@ -653,9 +697,7 @@ export default function DocumentDetailPage() {
                                           Summary
                                         </p>
                                       </div>
-                                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                        {chunk.summaryContent}
-                                      </p>
+                                      <MarkdownContent content={chunk.summaryContent} />
                                     </div>
                                   )}
                                   {chunk.textContent && (
@@ -673,14 +715,12 @@ export default function DocumentDetailPage() {
                                           Copy
                                         </button>
                                       </div>
-                                      <div className="rounded-lg border border-gray-200 bg-white p-3 max-h-72 overflow-y-auto">
-                                        <pre className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-sans">
-                                          {chunk.textContent}
-                                        </pre>
+                                      <div className="rounded-lg border border-gray-200 bg-white p-3 max-h-96 overflow-y-auto">
+                                        <MarkdownContent content={chunk.textContent} className="text-xs" />
                                       </div>
                                     </div>
                                   )}
-                                  {!chunk.summaryContent && !chunk.textContent && (
+                                  {tables.length === 0 && imageUrls.length === 0 && !chunk.summaryContent && !chunk.textContent && (
                                     <p className="text-sm text-gray-400">
                                       This chunk has no readable content yet.
                                     </p>

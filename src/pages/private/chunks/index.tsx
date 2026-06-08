@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import Topbar from "@/components/app/topbar";
+import { MarkdownContent } from "@/components/app/markdown";
+import { TableHtml } from "@/components/app/table-html";
 import { ContentTypeBadge, StatusBadge } from "@/components/app/status-badge";
+import { buildChunkAssetUrl } from "@/core/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDocumentChunks, useDocuments } from "@/core/api/hooks";
@@ -11,7 +14,11 @@ import {
   getChunkTokenCount,
   getDocumentStatusValue,
 } from "@/core/documents";
-import type { TIngestionChunk } from "@/core/ingestions";
+import {
+  type TIngestionChunk,
+  getChunkImageUrls,
+  getChunkTables,
+} from "@/core/ingestions";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpRight,
@@ -350,11 +357,63 @@ export default function ChunkExplorerPage() {
 
             <div className="flex-1 overflow-y-auto p-5">
               {activeTab === "raw" && (
-                <div className="h-full">
-                  <div className="text-sm text-gray-700 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100 min-h-32 whitespace-pre-wrap">
-                    {selectedChunk.textContent || getChunkPreview(selectedChunk)}
-                  </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+                <div className="h-full space-y-4">
+                  {(() => {
+                    const tables = getChunkTables(selectedChunk);
+                    const imageUrls = getChunkImageUrls(selectedChunk);
+                    return (
+                      <>
+                        {tables.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              {tables.length === 1 ? "Table" : `Tables (${tables.length})`}
+                            </p>
+                            <div className="space-y-2">
+                              {tables.map((tableHtml, idx) => (
+                                <TableHtml key={`table-${idx}`} html={tableHtml} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {imageUrls.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Images ({imageUrls.length})
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {imageUrls.map((src, idx) => (
+                                <a
+                                  key={`img-${idx}`}
+                                  href={buildChunkAssetUrl(src)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block size-28 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 transition-colors hover:border-indigo-400"
+                                >
+                                  <img
+                                    src={buildChunkAssetUrl(src)}
+                                    alt={`chunk ${selectedChunk.chunkIndex + 1} image ${idx + 1}`}
+                                    crossOrigin="use-credentials"
+                                    loading="lazy"
+                                    className="size-full object-cover"
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 min-h-32">
+                          {selectedChunk.textContent ? (
+                            <MarkdownContent content={selectedChunk.textContent} />
+                          ) : (
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                              {getChunkPreview(selectedChunk)}
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
                     <FileText className="size-3.5" />
                     {selectedDocument?.filename ?? "Unknown document"}
                     {selectedChunk.pageNumber ? ` - Page ${selectedChunk.pageNumber}` : ""}
@@ -372,8 +431,15 @@ export default function ChunkExplorerPage() {
                       {getChunkEmbeddingMode(selectedChunk)}
                     </span>
                   </div>
-                  <div className="text-sm text-indigo-800 bg-indigo-50/70 rounded-2xl p-5 leading-relaxed border border-indigo-100 min-h-32 whitespace-pre-wrap">
-                    {selectedChunk.summaryContent || selectedChunk.textContent || "No embedding text returned yet."}
+                  <div className="bg-indigo-50/70 rounded-2xl p-5 border border-indigo-100 min-h-32">
+                    {selectedChunk.summaryContent || selectedChunk.textContent ? (
+                      <MarkdownContent
+                        content={selectedChunk.summaryContent || selectedChunk.textContent}
+                        className="text-indigo-900"
+                      />
+                    ) : (
+                      <p className="text-sm text-indigo-800">No embedding text returned yet.</p>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-3">
                     This is the text currently available for vector encoding. Summary mode appears when the backend has produced summaries.

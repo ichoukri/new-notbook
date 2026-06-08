@@ -271,3 +271,30 @@ select,
   justify-content: start;
   align-items: center;
 }
+/* Chunk table HTML (sanitised fragments from document extraction). The markup
+   is injected raw, so it cannot carry Tailwind classes — style it here. */
+.chunk-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: var(--color-gray-700, #374151);
+}
+
+.chunk-table th,
+.chunk-table td {
+  border: 1px solid var(--color-gray-200, #e5e7eb);
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chunk-table th {
+  background-color: var(--color-gray-50, #f9fafb);
+  font-weight: 600;
+  color: var(--color-gray-600, #4b5563);
+}
+
+.chunk-table tr:nth-child(even) td {
+  background-color: var(--color-gray-50, #f9fafb);
+}

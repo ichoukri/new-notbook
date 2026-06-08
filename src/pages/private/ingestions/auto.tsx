@@ -58,7 +58,6 @@ import {
   Combine,
   Database,
   Download,
-  ExternalLink,
   FileText,
   Globe,
   Layers,
@@ -517,27 +516,9 @@ export default function AutoModePage() {
     );
   }
 
-  if (document.processingStatus === "completed") {
-    return (
-      <SuccessState
-        document={document}
-        datasetId={effectiveDatasetId}
-        datasetName={datasetName}
-        metrics={metrics}
-        onNavigate={navigate}
-      />
-    );
-  }
-
-  if (document.processingStatus === "cancelled") {
-    return (
-      <CancelledState
-        document={document}
-        datasetName={datasetName}
-        onNavigate={navigate}
-      />
-    );
-  }
+  // Completed and cancelled documents fall through to the full pipeline +
+  // Live-logs view below, so re-opening a finished file re-streams its
+  // existing process and logs rather than showing a bare summary card.
 
   if (isMetadataReview(document)) {
     return (
@@ -831,79 +812,6 @@ function SummaryRow({
   );
 }
 
-function SuccessState({
-  document,
-  datasetId,
-  datasetName,
-  metrics,
-  onNavigate,
-}: {
-  document: TIngestionDocument;
-  datasetId: string;
-  datasetName: string;
-  metrics: ReturnType<typeof getIngestionMetrics>;
-  onNavigate: ReturnType<typeof useNavigate>;
-}) {
-  return (
-    <IngestionShell title="Ingestion Complete" center>
-      <CenteredCard>
-        <StatusIcon icon={CheckCircle2} tone="emerald" />
-        <h2 className="mb-2 text-xl font-bold text-gray-900">
-          Ingestion complete
-        </h2>
-        <p className="mb-6 text-sm text-gray-500">
-          {document.filename} has been processed and indexed into {datasetName}.
-        </p>
-
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          {[
-            {
-              label: "Elements detected",
-              value: metrics.elementsDetected?.toLocaleString() ?? "—",
-            },
-            {
-              label: "Chunks indexed",
-              value: metrics.vectorizedChunks?.toLocaleString() ?? "—",
-            },
-            { label: "Embedding model", value: metrics.embeddingModel ?? "—" },
-            { label: "Vector store", value: metrics.vectorStore ?? "—" },
-          ].map((item) => (
-            <div key={item.label} className="rounded-xl bg-gray-50 p-3">
-              <p className="wrap-break-word text-lg font-bold text-gray-900">
-                {item.value}
-              </p>
-              <p className="text-xs text-gray-500">{item.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-2">
-          {datasetId && (
-            <Button size="sm" onClick={() => onNavigate(`/datasets/${datasetId}`)}>
-              <ExternalLink className="mr-1.5 size-4" />
-              Open dataset
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onNavigate("/datasets")}
-          >
-            Browse datasets
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onNavigate("/ingestions/new")}
-          >
-            Upload another
-          </Button>
-        </div>
-      </CenteredCard>
-    </IngestionShell>
-  );
-}
-
 function ErrorState({
   document,
   datasetName,
@@ -1107,7 +1015,11 @@ function AwaitingApprovalState({
           )}
           Cancel
         </Button>
-        <Button size="sm" onClick={onApprove} disabled={isApproving || isCancelling}>
+        <Button
+          size="sm"
+          onClick={onApprove}
+          disabled={isApproving || isCancelling}
+        >
           {isApproving ? (
             <Loader2 className="mr-1.5 size-4 animate-spin" />
           ) : (
@@ -1222,7 +1134,9 @@ function PartitionReview({
                   <p className="text-2xl font-bold tabular-nums text-gray-900">
                     {count}
                   </p>
-                  <p className="mt-1 text-xs capitalize text-gray-500">{type}</p>
+                  <p className="mt-1 text-xs capitalize text-gray-500">
+                    {type}
+                  </p>
                 </div>
               ))}
             </div>
@@ -1438,7 +1352,9 @@ function ChunkReview({
       toast.error("Select adjacent chunks to merge.");
       return;
     }
-    onSubmitEdits([{ op: "merge", chunk_ids: ordered.map((chunk) => chunk.id) }]);
+    onSubmitEdits([
+      { op: "merge", chunk_ids: ordered.map((chunk) => chunk.id) },
+    ]);
   };
 
   if (isLoading) {
@@ -1466,7 +1382,11 @@ function ChunkReview({
     <Panel
       icon={Layers}
       title={
-        editMode ? "Editing chunks" : showSummary ? "Chunk summaries" : "Chunk content"
+        editMode
+          ? "Editing chunks"
+          : showSummary
+            ? "Chunk summaries"
+            : "Chunk content"
       }
       subtitle={`${chunks.length} chunks · version ${chunks[0]?.chunkVersion}`}
       actions={
@@ -1497,7 +1417,12 @@ function ChunkReview({
                   Merge {selected.size}
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={exitEdit} disabled={busy}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={exitEdit}
+                disabled={busy}
+              >
                 Cancel
               </Button>
               <Button size="sm" onClick={buildAndSubmit} disabled={busy}>
@@ -1640,7 +1565,9 @@ function ChunkReview({
                     isDeleted ? "text-gray-400 line-through" : "text-gray-800",
                   )}
                 >
-                  {body || <span className="italic text-gray-400">(empty)</span>}
+                  {body || (
+                    <span className="italic text-gray-400">(empty)</span>
+                  )}
                 </p>
               )}
 
@@ -1734,7 +1661,9 @@ function MetadataReviewState({
   const [description, setDescription] = useState(
     asString(existingMeta.description),
   );
-  const [tagsInput, setTagsInput] = useState(asList(existingMeta.tags).join(", "));
+  const [tagsInput, setTagsInput] = useState(
+    asList(existingMeta.tags).join(", "),
+  );
   const [visibility, setVisibility] = useState<TAccessVisibility>(
     existingPolicy.visibility === "private" ||
       existingPolicy.visibility === "roles"
@@ -1800,7 +1729,9 @@ function MetadataReviewState({
           <Panel icon={Tag} title="Metadata">
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-gray-600">Title</label>
+                <label className="text-xs font-medium text-gray-600">
+                  Title
+                </label>
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
@@ -1940,32 +1871,6 @@ function MetadataReviewState({
           Complete document
         </Button>
       </ActionBar>
-    </IngestionShell>
-  );
-}
-
-function CancelledState({
-  document,
-  datasetName,
-  onNavigate,
-}: {
-  document: TIngestionDocument;
-  datasetName: string;
-  onNavigate: ReturnType<typeof useNavigate>;
-}) {
-  return (
-    <IngestionShell title="Ingestion Cancelled" center>
-      <CenteredCard>
-        <StatusIcon icon={X} tone="gray" />
-        <h2 className="mb-2 text-lg font-bold text-gray-900">
-          Ingestion cancelled
-        </h2>
-        <p className="mb-1 text-sm text-gray-500">{document.filename}</p>
-        <p className="mb-6 text-xs text-gray-500">{datasetName}</p>
-        <Button onClick={() => onNavigate("/ingestions/new")}>
-          Start new ingestion
-        </Button>
-      </CenteredCard>
     </IngestionShell>
   );
 }

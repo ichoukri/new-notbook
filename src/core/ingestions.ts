@@ -37,6 +37,17 @@ export type TDocumentMetadataPayload = {
 export type TBackendDocumentMutationResponse = {
   message: string;
   data: TBackendDocument;
+  // Present on /finalize when the uploaded file already exists in the dataset.
+  // ``reingested`` is true when a finished duplicate was re-queued in the
+  // requested mode; false when an in-flight duplicate was returned as-is.
+  duplicate?: boolean;
+  reingested?: boolean;
+  // ``revived`` is true when the duplicate was stranded in PENDING/QUEUED
+  // (its ingestion task was lost) and the backend re-queued it.
+  revived?: boolean;
+  // ``streaming`` is true when an in-flight duplicate was returned untouched so
+  // the client can (re-)attach to its live status stream.
+  streaming?: boolean;
 };
 
 export type TBackendPrepareUploadRequest = {
@@ -528,6 +539,27 @@ export function getChunkImageUrls(chunk: TIngestionChunk): string[] {
   const images = (oc as Record<string, unknown>).images;
   if (!Array.isArray(images)) return [];
   return images.filter((value): value is string => typeof value === "string");
+}
+
+/**
+ * Extract table HTML fragments from a chunk's ``originalContent.tables``.
+ *
+ * The backend stores tables as HTML strings (unstructured's
+ * ``text_as_html``, e.g. ``<table><tr><td>…</td></tr></table>``) — NOT as
+ * Markdown and NOT inside ``text_content``. Render the returned strings as
+ * sanitised HTML to display real tables.
+ *
+ * Returns an empty array when no tables are present or when
+ * ``originalContent`` has an unexpected shape.
+ */
+export function getChunkTables(chunk: TIngestionChunk): string[] {
+  const oc = chunk.originalContent;
+  if (!oc || typeof oc !== "object") return [];
+  const tables = (oc as Record<string, unknown>).tables;
+  if (!Array.isArray(tables)) return [];
+  return tables.filter(
+    (value): value is string => typeof value === "string" && value.trim() !== "",
+  );
 }
 
 export function getDocumentPreview(chunks: TIngestionChunk[]): string | null {
