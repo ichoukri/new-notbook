@@ -1,7 +1,14 @@
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MarkdownContent } from "@/components/app/markdown";
+import { TableHtml } from "@/components/app/table-html";
 import { backendApi, buildChunkAssetUrl } from "@/core/api";
 import { getApiErrorMessage, getApiErrorStatus } from "@/core/api/error";
 import {
@@ -54,22 +61,21 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
-  CheckSquare,
-  Combine,
   Database,
   Download,
   FileText,
+  GitMerge,
   Globe,
   Layers,
   Loader2,
   Lock,
   Pencil,
+  Plus,
   RefreshCw,
   Save,
   Scissors,
   Shield,
   Sparkles,
-  Square,
   Tag,
   Terminal,
   Trash2,
@@ -952,6 +958,11 @@ function AwaitingApprovalState({
     STAGE_DESCRIPTIONS[stage] ??
     "Review the output of this stage and approve to continue.";
 
+  // Chunk edits are staged client-side; block Approve until they're applied or
+  // discarded so an approval can't silently drop unsaved changes.
+  const [pendingChunkChanges, setPendingChunkChanges] = useState(0);
+  const blockApprove = pendingChunkChanges > 0;
+
   return (
     <IngestionShell title="Guided Ingestion">
       <Hero
@@ -995,12 +1006,22 @@ function AwaitingApprovalState({
           onSubmitEdits={onSubmitEdits}
           isSubmitting={isEditingChunks}
           disabled={isApproving || isCancelling}
+          onPendingChange={setPendingChunkChanges}
         />
       )}
 
       <ActionBar>
-        <span className="mr-auto hidden text-xs text-gray-400 sm:block">
-          {stageLabel} stage — approve to continue the pipeline.
+        <span className="mr-auto hidden text-xs sm:block">
+          {blockApprove ? (
+            <span className="text-violet-600">
+              Apply or discard your {pendingChunkChanges} pending change
+              {pendingChunkChanges === 1 ? "" : "s"} before approving.
+            </span>
+          ) : (
+            <span className="text-gray-400">
+              {stageLabel} stage — approve to continue the pipeline.
+            </span>
+          )}
         </span>
         <Button
           size="sm"
@@ -1018,7 +1039,12 @@ function AwaitingApprovalState({
         <Button
           size="sm"
           onClick={onApprove}
-          disabled={isApproving || isCancelling}
+          disabled={isApproving || isCancelling || blockApprove}
+          title={
+            blockApprove
+              ? "Apply or discard your pending chunk changes first"
+              : undefined
+          }
         >
           {isApproving ? (
             <Loader2 className="mr-1.5 size-4 animate-spin" />
@@ -1040,6 +1066,8 @@ type PartitionElement = {
   preview: string;
   has_image: boolean;
   has_table: boolean;
+  table_html: string | null;
+  image_path: string | null;
 };
 
 function parsePartitionElements(value: unknown): PartitionElement[] {
@@ -1058,6 +1086,10 @@ function parsePartitionElements(value: unknown): PartitionElement[] {
         preview: typeof record.preview === "string" ? record.preview : "",
         has_image: record.has_image === true,
         has_table: record.has_table === true,
+        table_html:
+          typeof record.table_html === "string" ? record.table_html : null,
+        image_path:
+          typeof record.image_path === "string" ? record.image_path : null,
       } satisfies PartitionElement;
     })
     .filter((item): item is PartitionElement => item !== null);
@@ -1075,6 +1107,8 @@ function PartitionReview({
   disabled: boolean;
 }) {
   const elements = parsePartitionElements(output?.elements);
+  // Image clicked for full-size preview (null = lightbox closed).
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   // Controlled by the persisted set: the row state reflects what's saved on the
   // document, so it stays correct across refetches and page revisits.
   const removed = new Set(
@@ -1121,6 +1155,7 @@ function PartitionReview({
       : [];
 
   return (
+    <>
     <MotionStack className="space-y-5">
       {counts.length > 0 && (
         <MotionItem>
@@ -1204,20 +1239,57 @@ function PartitionReview({
                         </span>
                       )}
                     </div>
-                    <p
-                      className={cn(
-                        "whitespace-pre-wrap text-sm leading-relaxed",
-                        isRemoved
-                          ? "text-gray-400 line-through"
-                          : "text-gray-800",
-                      )}
-                    >
-                      {element.preview || (
-                        <span className="italic text-gray-400">
-                          (no text content)
-                        </span>
-                      )}
-                    </p>
+                    {/* When a table is rendered below, its plain-text
+                        preview would just duplicate it, so suppress it. */}
+                    {!element.table_html && (
+                      <p
+                        className={cn(
+                          "whitespace-pre-wrap text-sm leading-relaxed",
+                          isRemoved
+                            ? "text-gray-400 line-through"
+                            : "text-gray-800",
+                        )}
+                      >
+                        {element.preview || (
+                          <span className="italic text-gray-400">
+                            (no text content)
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {element.image_path && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewImage(
+                            buildChunkAssetUrl(element.image_path as string),
+                          )
+                        }
+                        className={cn(
+                          "mt-2 block w-fit cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-50 transition-colors hover:border-violet-400",
+                          isRemoved && "opacity-50",
+                        )}
+                        title="Click to preview"
+                      >
+                        <img
+                          src={buildChunkAssetUrl(element.image_path)}
+                          alt={`element ${element.index} image`}
+                          crossOrigin="use-credentials"
+                          loading="lazy"
+                          className="max-h-64 w-auto max-w-full object-contain"
+                        />
+                      </button>
+                    )}
+                    {element.table_html && (
+                      <div
+                        className={cn(
+                          "mt-2 overflow-x-auto",
+                          isRemoved && "opacity-50",
+                        )}
+                      >
+                        <TableHtml html={element.table_html} />
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1248,12 +1320,176 @@ function PartitionReview({
         )}
       </MotionItem>
     </MotionStack>
+
+    <Dialog
+      open={previewImage !== null}
+      onOpenChange={(open) => !open && setPreviewImage(null)}
+    >
+      <DialogContent className="max-w-[90vw] border-0 bg-transparent p-0 shadow-none sm:max-w-3xl">
+        <DialogTitle className="sr-only">Image preview</DialogTitle>
+        {previewImage && (
+          <img
+            src={previewImage}
+            alt="Extracted element preview"
+            crossOrigin="use-credentials"
+            className="max-h-[85vh] w-full rounded-lg object-contain"
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
-// Splitting a chunk: the user separates segments with a line containing only
-// three-or-more dashes. Kept in sync with the hint shown in the editor.
-const SPLIT_DELIMITER = /\n-{3,}\n/;
+// Split a chunk's text into display "blocks" for the click-to-split UI.
+// Prefer paragraph boundaries (a blank line); fall back to single lines so a
+// wall of text with no blank lines is still splittable.
+function splitIntoBlocks(text: string): string[] {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return [];
+  const paragraphs = trimmed
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (paragraphs.length > 1) return paragraphs;
+  const lines = trimmed
+    .split(/\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return lines.length > 1 ? lines : [trimmed];
+}
+
+// Does this operation reference the given (server) chunk id?
+function opTouches(op: TChunkEditOperation, id: string): boolean {
+  return op.op === "merge" ? op.chunk_ids.includes(id) : op.chunk_id === id;
+}
+
+type PreviewStatus = "unchanged" | "edited" | "added" | "merged" | "deleted";
+
+// A row in the staged preview. ``serverId`` is set only when the row maps to a
+// single underlying server chunk (unchanged / edited / deleted); split and
+// merge produce synthetic rows that can't be acted on until applied.
+type PreviewChunk = {
+  key: string;
+  serverId: string | null;
+  status: PreviewStatus;
+  displayIndex: number; // -1 for deleted rows (kept visible, struck through)
+  pageNumber: number | null;
+  charCount: number;
+  contentTypes: string[];
+  imageUrls: string[];
+  content: string;
+};
+
+// Apply the staged operations to the server chunks client-side, mirroring the
+// backend's _build_specs ordering so the on-screen preview matches what Apply
+// will produce. Pure function — no network, instantly reflects every action.
+function buildChunkPreview(
+  chunks: TIngestionChunk[],
+  ops: TChunkEditOperation[],
+  showSummary: boolean,
+): PreviewChunk[] {
+  const contentOf = (c: TIngestionChunk) =>
+    (showSummary ? c.summaryContent : c.textContent) ?? "";
+  const indexOf = new Map(chunks.map((c, i) => [c.id, i]));
+
+  const editText = new Map<string, string>();
+  const deleteIds = new Set<string>();
+  const splitSegs = new Map<string, string[]>();
+  const mergeAnchor = new Map<string, string[]>();
+  const mergeConsumed = new Set<string>();
+
+  for (const op of ops) {
+    if (op.op === "edit") {
+      editText.set(
+        op.chunk_id,
+        (showSummary ? op.summary_content : op.text_content) ?? "",
+      );
+    } else if (op.op === "delete") {
+      deleteIds.add(op.chunk_id);
+    } else if (op.op === "split") {
+      splitSegs.set(op.chunk_id, op.segments);
+    } else if (op.op === "merge") {
+      const ordered = [...op.chunk_ids].sort(
+        (a, b) => (indexOf.get(a) ?? 0) - (indexOf.get(b) ?? 0),
+      );
+      mergeAnchor.set(ordered[0], ordered);
+      ordered.slice(1).forEach((id) => mergeConsumed.add(id));
+    }
+  }
+
+  const rows: PreviewChunk[] = [];
+  for (const chunk of chunks) {
+    const id = chunk.id;
+    if (mergeConsumed.has(id)) continue;
+
+    if (mergeAnchor.has(id)) {
+      const ids = mergeAnchor.get(id)!;
+      const members = ids.map((i) => chunks[indexOf.get(i)!]);
+      rows.push({
+        key: `merge:${ids.join("+")}`,
+        serverId: null,
+        status: "merged",
+        displayIndex: 0,
+        pageNumber: members[0]?.pageNumber ?? null,
+        charCount: members.reduce((sum, m) => sum + contentOf(m).length, 0),
+        contentTypes: [
+          ...new Set(members.flatMap((m) => m.contentTypes ?? [])),
+        ],
+        imageUrls: members.flatMap((m) => getChunkImageUrls(m)),
+        content: members.map((m) => contentOf(m)).join("\n\n"),
+      });
+      continue;
+    }
+
+    if (splitSegs.has(id)) {
+      const segments = splitSegs.get(id)!;
+      segments.forEach((segment, segmentIndex) =>
+        rows.push({
+          key: `split:${id}:${segmentIndex}`,
+          serverId: null,
+          status: "added",
+          displayIndex: 0,
+          pageNumber: chunk.pageNumber ?? null,
+          charCount: segment.length,
+          contentTypes: segmentIndex === 0 ? (chunk.contentTypes ?? []) : [],
+          imageUrls: segmentIndex === 0 ? getChunkImageUrls(chunk) : [],
+          content: segment,
+        }),
+      );
+      continue;
+    }
+
+    const isDeleted = deleteIds.has(id);
+    const isEdited = editText.has(id);
+    const content = isEdited ? editText.get(id)! : contentOf(chunk);
+    rows.push({
+      key: id,
+      serverId: id,
+      status: isDeleted ? "deleted" : isEdited ? "edited" : "unchanged",
+      displayIndex: 0,
+      pageNumber: chunk.pageNumber ?? null,
+      charCount: content.length,
+      contentTypes: chunk.contentTypes ?? [],
+      imageUrls: getChunkImageUrls(chunk),
+      content,
+    });
+  }
+
+  let n = 0;
+  for (const row of rows) row.displayIndex = row.status === "deleted" ? -1 : n++;
+  return rows;
+}
+
+const PREVIEW_STATUS_BADGE: Record<
+  Exclude<PreviewStatus, "unchanged">,
+  { label: string; className: string }
+> = {
+  edited: { label: "Edited", className: "bg-violet-100 text-violet-700" },
+  added: { label: "New", className: "bg-emerald-100 text-emerald-700" },
+  merged: { label: "Merged", className: "bg-emerald-100 text-emerald-700" },
+  deleted: { label: "Removed", className: "bg-red-100 text-red-600" },
+};
 
 function ChunkReview({
   chunks,
@@ -1262,6 +1498,7 @@ function ChunkReview({
   onSubmitEdits,
   isSubmitting,
   disabled,
+  onPendingChange,
 }: {
   chunks: TIngestionChunk[];
   isLoading: boolean;
@@ -1269,6 +1506,7 @@ function ChunkReview({
   onSubmitEdits: (operations: TChunkEditOperation[]) => void;
   isSubmitting: boolean;
   disabled: boolean;
+  onPendingChange?: (count: number) => void;
 }) {
   // Which content to surface depends on which stage just finished.
   //   chunking_awaiting_approval     → text_content (no summaries yet)
@@ -1276,85 +1514,118 @@ function ChunkReview({
   //   vectorization_awaiting_approval → summary_content (already vectorized)
   const showSummary = stage !== "chunking";
 
-  const [editMode, setEditMode] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [splitting, setSplitting] = useState<Set<string>>(new Set());
-  const [deleted, setDeleted] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Actions stage into pendingOps and are previewed locally; nothing hits the
+  // backend until "Apply". editingId/splittingId track the one open inline
+  // editor. The parent remounts this component per chunk version, so a
+  // successful apply clears all of this state automatically.
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [pendingOps, setPendingOps] = useState<TChunkEditOperation[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [splittingId, setSplittingId] = useState<string | null>(null);
+  // Block indices *after* which to cut the chunk being split.
+  const [splitAfter, setSplitAfter] = useState<Set<number>>(new Set());
 
-  // Edit state resets when a fresh chunk set arrives: the caller keys this
-  // component by chunk version + first id, so a rebuild remounts it clean.
+  // Tell the parent how many changes are staged so it can block Approve.
+  useEffect(() => {
+    onPendingChange?.(pendingOps.length);
+    return () => onPendingChange?.(0);
+  }, [pendingOps.length, onPendingChange]);
 
-  const draftOf = (chunk: TIngestionChunk) =>
-    drafts[chunk.id] ?? chunk.textContent ?? "";
+  const previewChunks = useMemo(
+    () => buildChunkPreview(chunks, pendingOps, showSummary),
+    [chunks, pendingOps, showSummary],
+  );
 
-  const setDraft = (id: string, value: string) =>
-    setDrafts((prev) => ({ ...prev, [id]: value }));
+  const resetModes = () => {
+    setEditingId(null);
+    setEditDraft("");
+    setSplittingId(null);
+    setSplitAfter(new Set());
+  };
 
-  const toggleIn = (
-    setter: Dispatch<SetStateAction<Set<string>>>,
-    id: string,
-  ) =>
-    setter((prev) => {
+  // Stage an op, dropping any existing op on the same chunk(s) so the latest
+  // action on a chunk wins and we never reference one chunk twice.
+  const stageOp = (op: TChunkEditOperation, ids: string[]) =>
+    setPendingOps((prev) => [
+      ...prev.filter((existing) => !ids.some((id) => opTouches(existing, id))),
+      op,
+    ]);
+
+  const startEdit = (serverId: string, content: string) => {
+    resetModes();
+    setEditingId(serverId);
+    setEditDraft(content);
+  };
+
+  const saveEdit = (serverId: string) => {
+    if (!editDraft.trim()) {
+      resetModes();
+      return;
+    }
+    stageOp(
+      showSummary
+        ? { op: "edit", chunk_id: serverId, summary_content: editDraft }
+        : { op: "edit", chunk_id: serverId, text_content: editDraft },
+      [serverId],
+    );
+    resetModes();
+  };
+
+  const startSplit = (serverId: string) => {
+    resetModes();
+    setSplittingId(serverId);
+  };
+
+  const toggleSplitAt = (blockIndex: number) =>
+    setSplitAfter((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(blockIndex)) next.delete(blockIndex);
+      else next.add(blockIndex);
       return next;
     });
 
-  const exitEdit = () => {
-    setEditMode(false);
-    setDrafts({});
-    setSplitting(new Set());
-    setDeleted(new Set());
-    setSelected(new Set());
-  };
-
-  const buildAndSubmit = () => {
-    const ops: TChunkEditOperation[] = [];
-    for (const chunk of chunks) {
-      if (deleted.has(chunk.id)) {
-        ops.push({ op: "delete", chunk_id: chunk.id });
-        continue;
-      }
-      const draft = drafts[chunk.id];
-      if (draft === undefined) continue;
-      const original = chunk.textContent ?? "";
-      if (splitting.has(chunk.id)) {
-        const segments = draft
-          .split(SPLIT_DELIMITER)
-          .map((segment) => segment.trim())
-          .filter(Boolean);
-        if (segments.length >= 2) {
-          ops.push({ op: "split", chunk_id: chunk.id, segments });
-          continue;
-        }
-      }
-      if (draft.trim() && draft !== original) {
-        ops.push({ op: "edit", chunk_id: chunk.id, text_content: draft });
-      }
+  const confirmSplit = (serverId: string, blocks: string[]) => {
+    const cuts = [...splitAfter].sort((a, b) => a - b);
+    const segments: string[] = [];
+    let start = 0;
+    for (const cut of cuts) {
+      segments.push(blocks.slice(start, cut + 1).join("\n\n"));
+      start = cut + 1;
     }
-    if (ops.length === 0) {
-      toast.info("No changes to save.");
+    segments.push(blocks.slice(start).join("\n\n"));
+    const cleaned = segments.map((segment) => segment.trim()).filter(Boolean);
+    if (cleaned.length < 2) {
+      toast.error("Add at least one split point first.");
       return;
     }
-    onSubmitEdits(ops);
+    stageOp({ op: "split", chunk_id: serverId, segments: cleaned }, [serverId]);
+    resetModes();
   };
 
-  const mergeSelected = () => {
-    const ordered = chunks.filter((chunk) => selected.has(chunk.id));
-    if (ordered.length < 2) return;
-    const indices = ordered.map((chunk) => chunk.chunkIndex);
-    const contiguous = indices.every(
-      (value, i) => i === 0 || value === indices[i - 1] + 1,
+  const deleteChunk = (serverId: string) =>
+    stageOp({ op: "delete", chunk_id: serverId }, [serverId]);
+
+  const undoChunk = (serverId: string) =>
+    setPendingOps((prev) =>
+      prev.filter((op) => !opTouches(op, serverId)),
     );
-    if (!contiguous) {
-      toast.error("Select adjacent chunks to merge.");
-      return;
-    }
-    onSubmitEdits([
-      { op: "merge", chunk_ids: ordered.map((chunk) => chunk.id) },
+
+  const mergeRows = (firstId: string, secondId: string) =>
+    stageOp({ op: "merge", chunk_ids: [firstId, secondId] }, [
+      firstId,
+      secondId,
     ]);
+
+  const applyAll = () => {
+    if (pendingOps.length === 0 || isSubmitting) return;
+    resetModes();
+    onSubmitEdits(pendingOps);
+  };
+
+  const discardAll = () => {
+    resetModes();
+    setPendingOps([]);
   };
 
   if (isLoading) {
@@ -1377,123 +1648,125 @@ function ChunkReview({
   }
 
   const busy = isSubmitting || disabled;
+  const hasPending = pendingOps.length > 0;
+  const editorOpen = editingId !== null || splittingId !== null;
 
   return (
-    <Panel
-      icon={Layers}
-      title={
-        editMode
-          ? "Editing chunks"
-          : showSummary
-            ? "Chunk summaries"
-            : "Chunk content"
-      }
-      subtitle={`${chunks.length} chunks · version ${chunks[0]?.chunkVersion}`}
-      actions={
-        <div className="flex items-center gap-2">
-          {isSubmitting && (
-            <Loader2 className="size-4 animate-spin text-violet-500" />
-          )}
-          {!editMode ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setEditMode(true)}
-              disabled={busy}
-            >
-              <Pencil className="mr-1.5 size-3.5" />
-              Edit chunks
-            </Button>
-          ) : (
-            <>
-              {selected.size >= 2 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={mergeSelected}
-                  disabled={busy}
-                >
-                  <Combine className="mr-1.5 size-3.5" />
-                  Merge {selected.size}
-                </Button>
-              )}
+    <>
+      <Panel
+        icon={Layers}
+        title={showSummary ? "Chunk summaries" : "Chunk content"}
+        subtitle={`${previewChunks.filter((row) => row.status !== "deleted").length} chunks · version ${chunks[0]?.chunkVersion}`}
+        actions={
+          hasPending ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-violet-600">
+                {pendingOps.length} pending change
+                {pendingOps.length === 1 ? "" : "s"}
+              </span>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={exitEdit}
+                onClick={discardAll}
                 disabled={busy}
               >
-                Cancel
+                Discard
               </Button>
-              <Button size="sm" onClick={buildAndSubmit} disabled={busy}>
-                <Save className="mr-1.5 size-3.5" />
-                Save changes
+              <Button size="sm" onClick={applyAll} disabled={busy}>
+                {isSubmitting ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 size-3.5" />
+                )}
+                Apply
               </Button>
+            </div>
+          ) : undefined
+        }
+        bodyClassName=""
+      >
+        <div className="border-b border-violet-100 bg-violet-50/60 px-5 py-2.5 text-xs text-violet-700">
+          {hasPending ? (
+            <>
+              Previewing staged changes. <strong>Apply</strong> to rebuild the
+              chunk version and re-run summarisation &amp; vectorisation, or{" "}
+              <strong>Discard</strong> to revert. Approve is disabled until you
+              apply.
+            </>
+          ) : (
+            <>
+              Refine the chunks below — <strong>edit</strong> text,{" "}
+              <strong>split</strong> a chunk into parts, <strong>merge</strong> a
+              chunk with its neighbour, or <strong>delete</strong> one. Changes
+              preview here and only persist when you Apply.
             </>
           )}
         </div>
-      }
-      bodyClassName=""
-    >
-      {editMode && (
-        <div className="border-b border-violet-100 bg-violet-50/60 px-5 py-2.5 text-xs text-violet-700">
-          Edit chunk text inline, split a chunk by separating segments with a
-          line of <code className="font-mono">---</code>, delete chunks, or tick
-          adjacent chunks and merge them. Saving rebuilds the chunk version and
-          re-runs summarisation &amp; vectorisation for changed chunks.
-        </div>
-      )}
 
-      <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
-        {chunks.map((chunk) => {
-          const imageUrls = getChunkImageUrls(chunk);
-          const isDeleted = deleted.has(chunk.id);
-          const isSplitting = splitting.has(chunk.id);
-          const isSelected = selected.has(chunk.id);
-          const body = showSummary
-            ? chunk.summaryContent || chunk.textContent
-            : chunk.textContent || chunk.summaryContent;
+        <div className="max-h-[600px] overflow-y-auto py-1">
+          {previewChunks.map((row, index) => {
+            const next = previewChunks[index + 1];
+            const isEditing =
+              row.serverId != null && editingId === row.serverId;
+            const isSplitting =
+              row.serverId != null && splittingId === row.serverId;
+            const isDeleted = row.status === "deleted";
+            const canAct = row.serverId != null && !isDeleted;
+            const badge =
+              row.status === "unchanged"
+                ? null
+                : PREVIEW_STATUS_BADGE[row.status];
+            const blocks = isSplitting ? splitIntoBlocks(row.content) : [];
+            const splitCount = splitAfter.size + 1;
+            // A merge connector only appears between two pristine, adjacent
+            // server chunks (anything already staged can't be merged again).
+            const mergeableHere =
+              !editorOpen &&
+              row.status === "unchanged" &&
+              row.serverId != null &&
+              next?.status === "unchanged" &&
+              next?.serverId != null;
 
-          return (
-            <div
-              key={chunk.id}
-              className={cn(
-                "px-5 py-4",
-                isDeleted && "bg-red-50/50 opacity-70",
-                isSelected && "bg-violet-50/40",
-              )}
-            >
-              <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
-                {editMode && (
-                  <button
-                    type="button"
-                    onClick={() => toggleIn(setSelected, chunk.id)}
-                    disabled={isDeleted || busy}
-                    className="text-violet-500 disabled:opacity-40"
-                    title="Select for merge"
-                  >
-                    {isSelected ? (
-                      <CheckSquare className="size-4" />
-                    ) : (
-                      <Square className="size-4" />
+            return (
+              <Fragment key={row.key}>
+                <div
+                  className={cn(
+                    "group px-5 py-4",
+                    (isEditing || isSplitting) &&
+                      "rounded-xl bg-violet-50/40 ring-1 ring-violet-100",
+                    isDeleted && "opacity-60",
+                    (row.status === "added" || row.status === "merged") &&
+                      "border-l-2 border-emerald-300",
+                    row.status === "edited" && "border-l-2 border-violet-300",
+                  )}
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span className="font-mono">
+                      {row.displayIndex >= 0 ? `#${row.displayIndex}` : "removed"}
+                    </span>
+                    {badge && (
+                      <span
+                        className={cn(
+                          "rounded px-2 py-0.5 text-[10px] font-medium",
+                          badge.className,
+                        )}
+                      >
+                        {badge.label}
+                      </span>
                     )}
-                  </button>
-                )}
-                <span className="font-mono">#{chunk.chunkIndex}</span>
-                {chunk.pageNumber != null && (
-                  <span className="rounded bg-gray-100 px-2 py-0.5">
-                    page {chunk.pageNumber}
-                  </span>
-                )}
-                <span>{chunk.charCount} chars</span>
-                {imageUrls.length > 0 && (
-                  <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
-                    {imageUrls.length} image{imageUrls.length === 1 ? "" : "s"}
-                  </span>
-                )}
-                <span className="ml-auto flex items-center gap-1">
-                  {chunk.contentTypes?.length > 0 &&
-                    chunk.contentTypes.map((ct) => (
+                    {row.pageNumber != null && (
+                      <span className="rounded bg-gray-100 px-2 py-0.5">
+                        page {row.pageNumber}
+                      </span>
+                    )}
+                    <span>{row.charCount} chars</span>
+                    {row.imageUrls.length > 0 && (
+                      <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
+                        {row.imageUrls.length} image
+                        {row.imageUrls.length === 1 ? "" : "s"}
+                      </span>
+                    )}
+                    {row.contentTypes.map((ct) => (
                       <span
                         key={ct}
                         className="rounded bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
@@ -1501,102 +1774,243 @@ function ChunkReview({
                         {ct}
                       </span>
                     ))}
-                  {editMode &&
-                    (isDeleted ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleIn(setDeleted, chunk.id)}
-                        disabled={busy}
-                        className="flex items-center gap-1 px-1.5 text-emerald-600 hover:text-emerald-700"
-                      >
-                        <Undo2 className="size-3.5" /> Undo
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => toggleIn(setSplitting, chunk.id)}
-                          disabled={busy}
-                          className={cn(
-                            "flex items-center gap-1 px-1.5 hover:text-violet-700",
-                            isSplitting ? "text-violet-700" : "text-gray-400",
-                          )}
-                          title="Split this chunk"
-                        >
-                          <Scissors className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleIn(setDeleted, chunk.id)}
-                          disabled={busy}
-                          className="flex items-center gap-1 px-1.5 text-gray-400 hover:text-red-600"
-                          title="Delete this chunk"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </>
-                    ))}
-                </span>
-              </div>
 
-              {editMode && !isDeleted ? (
-                <>
-                  {isSplitting && (
-                    <p className="mb-1 text-[11px] text-violet-600">
-                      Separate fragments with a line containing only{" "}
-                      <code className="font-mono">---</code>
-                    </p>
-                  )}
-                  <textarea
-                    value={draftOf(chunk)}
-                    onChange={(event) => setDraft(chunk.id, event.target.value)}
-                    disabled={busy}
-                    rows={Math.min(
-                      12,
-                      Math.max(3, draftOf(chunk).split("\n").length + 1),
+                    {!isEditing && !isSplitting && (
+                      <span className="ml-auto flex items-center gap-1">
+                        {isDeleted ? (
+                          <button
+                            type="button"
+                            onClick={() => undoChunk(row.serverId as string)}
+                            disabled={busy}
+                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
+                          >
+                            <Undo2 className="size-3.5" /> Undo
+                          </button>
+                        ) : canAct ? (
+                          <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                startEdit(row.serverId as string, row.content)
+                              }
+                              disabled={busy || editorOpen}
+                              className="rounded px-1.5 py-0.5 text-gray-400 hover:bg-gray-100 hover:text-violet-700 disabled:opacity-40"
+                              title="Edit text"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => startSplit(row.serverId as string)}
+                              disabled={busy || editorOpen}
+                              className="rounded px-1.5 py-0.5 text-gray-400 hover:bg-gray-100 hover:text-violet-700 disabled:opacity-40"
+                              title="Split this chunk"
+                            >
+                              <Scissors className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteChunk(row.serverId as string)}
+                              disabled={busy || editorOpen}
+                              className="rounded px-1.5 py-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                              title="Delete this chunk"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] italic text-gray-400">
+                            apply to edit further
+                          </span>
+                        )}
+                      </span>
                     )}
-                    className="w-full resize-y rounded-lg border border-gray-200 p-3 font-mono text-sm leading-relaxed text-gray-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
-                  />
-                </>
-              ) : (
-                <p
-                  className={cn(
-                    "whitespace-pre-wrap text-sm leading-relaxed",
-                    isDeleted ? "text-gray-400 line-through" : "text-gray-800",
-                  )}
-                >
-                  {body || (
-                    <span className="italic text-gray-400">(empty)</span>
-                  )}
-                </p>
-              )}
+                  </div>
 
-              {!editMode && imageUrls.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {imageUrls.map((src, idx) => (
-                    <a
-                      key={`${chunk.id}-img-${idx}`}
-                      href={buildChunkAssetUrl(src)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block size-28 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 transition-colors hover:border-violet-400"
-                    >
-                      <img
-                        src={buildChunkAssetUrl(src)}
-                        alt={`chunk ${chunk.chunkIndex} image ${idx + 1}`}
-                        crossOrigin="use-credentials"
-                        loading="lazy"
-                        className="size-full object-cover"
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editDraft}
+                        onChange={(event) => setEditDraft(event.target.value)}
+                        disabled={busy}
+                        autoFocus
+                        rows={Math.min(
+                          16,
+                          Math.max(4, editDraft.split("\n").length + 1),
+                        )}
+                        className="w-full resize-y rounded-lg border border-gray-200 p-3 font-mono text-sm leading-relaxed text-gray-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
                       />
-                    </a>
-                  ))}
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={resetModes}
+                          disabled={busy}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => saveEdit(row.serverId as string)}
+                          disabled={busy}
+                        >
+                          <Save className="mr-1.5 size-3.5" />
+                          Stage edit
+                        </Button>
+                      </div>
+                    </div>
+                  ) : isSplitting ? (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-violet-600">
+                        Click a gap to add a split point. This chunk becomes{" "}
+                        <strong>{splitCount}</strong> chunk
+                        {splitCount === 1 ? "" : "s"}.
+                      </p>
+                      <div className="overflow-hidden rounded-lg border border-violet-200">
+                        {blocks.map((block, blockIndex) => (
+                          <Fragment key={blockIndex}>
+                            <div className="whitespace-pre-wrap bg-white px-3 py-2 text-sm leading-relaxed text-gray-800">
+                              {block}
+                            </div>
+                            {blockIndex < blocks.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSplitAt(blockIndex)}
+                                disabled={busy}
+                                className={cn(
+                                  "flex w-full items-center justify-center gap-1.5 py-1 text-[11px] font-medium transition-colors",
+                                  splitAfter.has(blockIndex)
+                                    ? "bg-violet-600 text-white hover:bg-violet-700"
+                                    : "bg-violet-50 text-violet-500 hover:bg-violet-100",
+                                )}
+                              >
+                                {splitAfter.has(blockIndex) ? (
+                                  <>
+                                    <Scissors className="size-3" /> Split here ·
+                                    click to remove
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="size-3" /> Split here
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </Fragment>
+                        ))}
+                      </div>
+                      {blocks.length < 2 && (
+                        <p className="text-[11px] text-gray-400">
+                          This chunk has no internal boundaries to split on.
+                        </p>
+                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={resetModes}
+                          disabled={busy}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            confirmSplit(row.serverId as string, blocks)
+                          }
+                          disabled={busy || splitAfter.size === 0}
+                        >
+                          <Scissors className="mr-1.5 size-3.5" />
+                          Split into {splitCount}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className={cn(
+                          "text-sm leading-relaxed",
+                          isDeleted
+                            ? "text-gray-400 line-through"
+                            : "text-gray-800",
+                        )}
+                      >
+                        {row.content ? (
+                          <MarkdownContent content={row.content} />
+                        ) : (
+                          <span className="italic text-gray-400">(empty)</span>
+                        )}
+                      </div>
+                      {row.imageUrls.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {row.imageUrls.map((src, imageIndex) => (
+                            <button
+                              key={`${row.key}-img-${imageIndex}`}
+                              type="button"
+                              onClick={() =>
+                                setPreviewImage(buildChunkAssetUrl(src))
+                              }
+                              className="block size-28 cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-50 transition-colors hover:border-violet-400"
+                              title="Click to preview"
+                            >
+                              <img
+                                src={buildChunkAssetUrl(src)}
+                                alt={`chunk image ${imageIndex + 1}`}
+                                crossOrigin="use-credentials"
+                                loading="lazy"
+                                className="size-full object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
+
+                {mergeableHere && (
+                  <div className="group/merge relative flex h-6 items-center justify-center">
+                    <div className="absolute inset-x-5 top-1/2 border-t border-dashed border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        mergeRows(
+                          row.serverId as string,
+                          next?.serverId as string,
+                        )
+                      }
+                      disabled={busy}
+                      className="relative z-10 flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-400 transition hover:border-violet-300 hover:text-violet-700 disabled:opacity-40 group-hover/merge:border-violet-200"
+                      title="Merge this chunk with the next"
+                    >
+                      <GitMerge className="size-3" />
+                      Merge
+                    </button>
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Dialog
+        open={previewImage !== null}
+        onOpenChange={(open) => !open && setPreviewImage(null)}
+      >
+        <DialogContent className="max-w-[90vw] border-0 bg-transparent p-0 shadow-none sm:max-w-3xl">
+          <DialogTitle className="sr-only">Image preview</DialogTitle>
+          {previewImage && (
+            <img
+              src={previewImage}
+              alt="Chunk image preview"
+              crossOrigin="use-credentials"
+              className="max-h-[85vh] w-full rounded-lg object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
