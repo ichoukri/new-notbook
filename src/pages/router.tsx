@@ -20,7 +20,7 @@ const DatasetDetailPage = lazy(() => import("@/pages/private/datasets/detail"));
 const DocumentsPage = lazy(() => import("@/pages/private/documents"));
 const DocumentDetailPage = lazy(() => import("@/pages/private/documents/detail"));
 const NewIngestionPage = lazy(() => import("@/pages/private/ingestions/new"));
-const AutoModePage = lazy(() => import("@/pages/private/ingestions/auto"));
+const IngestionStatusPage = lazy(() => import("@/pages/private/ingestions/auto"));
 const ChunksPage = lazy(() => import("@/pages/private/chunks"));
 const RetrievalPage = lazy(() => import("@/pages/private/retrieval"));
 const ActivityPage = lazy(() => import("@/pages/private/activity"));
@@ -39,8 +39,8 @@ export default function Router() {
               <Route path="/documents" element={<DocumentsPage />} />
               <Route path="/documents/:id" element={<DocumentDetailPage />} />
               <Route path="/ingestions/new" element={<NewIngestionPage />} />
-              <Route path="/ingestions/status" element={<AutoModePage />} />
-              <Route path="/ingestions/auto" element={<AutoModePage />} />
+              <Route path="/ingestions/status" element={<IngestionStatusPage />} />
+              <Route path="/ingestions/auto" element={<IngestionStatusPage />} />
               <Route path="/chunks" element={<ChunksPage />} />
               <Route path="/retrieval" element={<RetrievalPage />} />
               <Route path="/activity" element={<ActivityPage />} />

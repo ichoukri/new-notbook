@@ -40,7 +40,6 @@ export function TableHtml({ html }: { html: string }) {
   return (
     <div
       className="chunk-table overflow-x-auto rounded-lg border border-gray-200"
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: safeHtml }}
     />
   );

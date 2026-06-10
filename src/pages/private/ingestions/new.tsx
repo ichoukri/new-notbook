@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
@@ -8,7 +8,6 @@ import { getApiErrorMessage } from "@/core/api/error";
 import {
   type TBackendDataset,
   type TDataset,
-  formatFileSize,
   mapBackendDataset,
 } from "@/core/datasets";
 import type {
@@ -18,103 +17,38 @@ import type {
   TBackendPrepareUploadResponse,
 } from "@/core/ingestions";
 import axios from "axios";
-import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   ArrowRight,
-  CheckCircle2,
-  ChevronDown,
   ClipboardList,
-  Database,
-  FileCode,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  FolderOpen,
-  Loader2,
-  Music,
-  Search,
   Sparkles,
-  Upload,
-  Video,
-  X,
   Zap,
 } from "lucide-react";
-
-type IconComponent = typeof FileText;
-type IngestionMode = "auto" | "guided";
-const MAX_FILE_SIZE_BYTES = env.VITE_MAX_UPLOAD_MB * 1024 * 1024;
-const SUPPORTED_FILE_EXTENSIONS = [
-  ".pdf",
-  ".docx",
-  ".txt",
-  ".csv",
-  ".json",
-  ".jsonl",
-  ".md",
-  ".html",
-  ".htm",
-  ".pptx",
-  ".xlsx",
-] as const;
-
-const EXT_ICON: Record<string, { icon: IconComponent; color: string }> = {
-  pdf: { icon: FileText, color: "text-red-500 bg-red-50" },
-  docx: { icon: FileText, color: "text-blue-500 bg-blue-50" },
-  doc: { icon: FileText, color: "text-blue-500 bg-blue-50" },
-  xlsx: { icon: FileSpreadsheet, color: "text-emerald-600 bg-emerald-50" },
-  csv: { icon: FileSpreadsheet, color: "text-emerald-600 bg-emerald-50" },
-  pptx: { icon: FileImage, color: "text-orange-500 bg-orange-50" },
-  json: { icon: FileCode, color: "text-purple-500 bg-purple-50" },
-  jsonl: { icon: FileCode, color: "text-purple-500 bg-purple-50" },
-  md: { icon: FileCode, color: "text-gray-600 bg-gray-100" },
-  txt: { icon: FileText, color: "text-gray-600 bg-gray-100" },
-  html: { icon: FileCode, color: "text-orange-600 bg-orange-50" },
-  mp4: { icon: Video, color: "text-pink-600 bg-pink-50" },
-  mp3: { icon: Music, color: "text-violet-600 bg-violet-50" },
-};
-
-const FILE_TYPES = ["PDF", "DOCX", "TXT", "CSV", "JSON", "JSONL", "MD", "HTML", "PPTX", "XLSX"];
-
-function getFileExt(name: string) {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function validateSelectedFile(file: File): string | null {
-  const extension = `.${getFileExt(file.name)}`;
-
-  if (!SUPPORTED_FILE_EXTENSIONS.includes(extension as (typeof SUPPORTED_FILE_EXTENSIONS)[number])) {
-    return "Unsupported file type for auto ingestion.";
-  }
-
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return `File size exceeds the ${env.VITE_MAX_UPLOAD_MB} MB limit.`;
-  }
-
-  return null;
-}
-
-function getFileInfo(file: File) {
-  return (
-    EXT_ICON[getFileExt(file.name)] ?? {
-      icon: FileText,
-      color: "text-gray-500 bg-gray-100",
-    }
-  );
-}
+import { DatasetPicker } from "./new-ingestion/dataset-picker";
+import { Field } from "./new-ingestion/field";
+import { FilePicker } from "./new-ingestion/file-picker";
+import { ModeCard } from "./new-ingestion/mode-card";
+import { ReadinessSteps } from "./new-ingestion/readiness-steps";
+import { ResultSummary } from "./new-ingestion/result-summary";
+import { StartIngestionButton } from "./new-ingestion/start-ingestion-button";
+import type { IngestionMode, UploadItem } from "./new-ingestion/types";
+import {
+  UPLOAD_CONCURRENCY,
+  collectAcceptedFiles,
+  makeItemId,
+} from "./new-ingestion/upload-files";
 
 export default function NewIngestionPage() {
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [datasets, setDatasets] = useState<TDataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [items, setItems] = useState<UploadItem[]>([]);
   const [mode, setMode] = useState<IngestionMode>("auto");
-  const [dragOver, setDragOver] = useState(false);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [datasetsError, setDatasetsError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [finished, setFinished] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,51 +97,58 @@ export default function NewIngestionPage() {
     };
   }, []);
 
-  const handleFileChange = (nextFile: File | null) => {
-    if (nextFile) {
-      const validationError = validateSelectedFile(nextFile);
-      if (validationError) {
-        toast.error(validationError);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-        setFile(null);
-        return;
+  // Add a batch of files to the selection: keep supported/in-size ones, dedupe
+  // against what's already chosen, and surface a one-line summary of skips.
+  const addFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return;
+    const { accepted, skippedUnsupported, skippedOversize } =
+      collectAcceptedFiles(incoming);
+
+    let addedCount = 0;
+    setItems((prev) => {
+      const seen = new Set(prev.map((item) => item.id));
+      const next = [...prev];
+      for (const file of accepted) {
+        const id = makeItemId(file);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        next.push({ id, file, status: "pending" });
+        addedCount += 1;
       }
-    }
+      return next;
+    });
+    setFinished(false);
 
-    setFile(nextFile);
-    if (!nextFile && fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
+    const skipped: string[] = [];
+    if (skippedUnsupported > 0)
+      skipped.push(`${skippedUnsupported} unsupported`);
+    if (skippedOversize > 0)
+      skipped.push(`${skippedOversize} over ${env.VITE_MAX_UPLOAD_MB} MB`);
+    const duplicates = accepted.length - addedCount;
+    if (duplicates > 0) skipped.push(`${duplicates} already added`);
 
-  const handleDrop = (event: DragEvent) => {
-    event.preventDefault();
-    setDragOver(false);
-
-    const nextFile = event.dataTransfer.files[0];
-    if (nextFile) {
-      handleFileChange(nextFile);
-    }
-  };
-
-  const handleSelect = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] ?? null;
-    if (nextFile) {
-      handleFileChange(nextFile);
+    if (addedCount > 0 && skipped.length > 0) {
+      toast.info(`Added ${addedCount} file(s) · skipped ${skipped.join(", ")}.`);
+    } else if (addedCount === 0 && skipped.length > 0) {
+      toast.error(`No files added — skipped ${skipped.join(", ")}.`);
     }
   };
 
-  const handleStart = async () => {
-    if (!selectedDataset || !file || isSubmitting) {
-      return;
-    }
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  };
 
-    setIsSubmitting(true);
+  const clearItems = () => {
+    setItems([]);
+    setFinished(false);
+  };
 
+  // Upload one file end-to-end (presign → PUT → hash → finalize) and return the
+  // resolved item with its outcome. Never throws — failures are captured on the
+  // item so one bad file doesn't abort the batch.
+  const uploadOne = async (item: UploadItem): Promise<UploadItem> => {
+    const { file } = item;
     try {
-      // Step 1: Get presigned upload URL
       const prepareResponse = await backendApi.create<
         TBackendPrepareUploadResponse,
         TBackendPrepareUploadRequest
@@ -217,7 +158,6 @@ export default function NewIngestionPage() {
         content_type: file.type || null,
       });
 
-      // Step 2: Upload file directly to storage
       await axios.put(prepareResponse.upload_url, file, {
         headers: {
           ...prepareResponse.headers,
@@ -225,15 +165,12 @@ export default function NewIngestionPage() {
         },
       });
 
-      // Step 3: Compute SHA-256 hash
       const fileBuffer = await file.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", fileBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      const sha256 = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 
-      // Step 4: Finalize upload and start processing. Pass ``mode`` so the
-      // backend orchestrator decides whether to chain (auto) or pause after
-      // each stage (guided).
       const finalizeResponse = await backendApi.create<
         TBackendDocumentMutationResponse,
         TBackendFinalizeRequest
@@ -247,48 +184,137 @@ export default function NewIngestionPage() {
         mode,
       });
 
-      if (finalizeResponse.revived) {
-        // The file was stranded in PENDING/QUEUED (its task was lost) and the
-        // backend re-queued it — the status page below will now show progress.
-        toast.success(finalizeResponse.message);
-      } else if (finalizeResponse.duplicate && !finalizeResponse.reingested) {
-        // The file is genuinely mid-ingestion in this dataset — open it and
-        // attach to its live stream rather than implying a fresh run started.
-        toast.info(finalizeResponse.message);
-      } else if (finalizeResponse.reingested) {
-        // A previously-finished identical file was re-queued in this mode.
-        toast.success(finalizeResponse.message);
-      } else {
-        toast.success(
-          mode === "guided"
-            ? "Guided ingestion started. You'll be asked to approve each stage."
-            : "Auto ingestion started.",
-        );
-      }
-      // Both modes use the same status page for now — the page renders an
-      // "Awaiting your review" panel when status hits a ``*_AWAITING_APPROVAL``
-      // state, and the standard in-progress UI otherwise.
-      navigate(
-        `/ingestions/status?document_id=${finalizeResponse.data.id}&dataset_id=${selectedDataset}`,
-      );
+      const isDuplicate =
+        Boolean(finalizeResponse.duplicate) && !finalizeResponse.reingested;
+      return {
+        ...item,
+        status: isDuplicate ? "duplicate" : "done",
+        documentId: finalizeResponse.data.id,
+      };
     } catch (error) {
-      toast.error(
-        getApiErrorMessage(error, "Could not upload and start ingestion."),
-      );
-    } finally {
-      setIsSubmitting(false);
+      return {
+        ...item,
+        status: "error",
+        error: getApiErrorMessage(error, "Upload failed."),
+      };
     }
   };
 
+  // Run a bounded-concurrency upload pool over a set of items, updating each
+  // row's status as it progresses. Returns the resolved items so the caller can
+  // decide on navigation / toasts.
+  const runUploads = async (targets: UploadItem[]): Promise<UploadItem[]> => {
+    setIsSubmitting(true);
+    setFinished(false);
+    const targetIds = new Set(targets.map((item) => item.id));
+    setItems((prev) =>
+      prev.map((row) =>
+        targetIds.has(row.id)
+          ? { ...row, status: "pending", error: undefined }
+          : row,
+      ),
+    );
+
+    const queue = [...targets];
+    const results: UploadItem[] = [];
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) break;
+        setItems((prev) =>
+          prev.map((row) =>
+            row.id === item.id ? { ...row, status: "uploading" } : row,
+          ),
+        );
+        const resolved = await uploadOne(item);
+        results.push(resolved);
+        setItems((prev) =>
+          prev.map((row) => (row.id === resolved.id ? resolved : row)),
+        );
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, targets.length) }, () =>
+        worker(),
+      ),
+    );
+
+    setIsSubmitting(false);
+    setFinished(true);
+    return results;
+  };
+
+  const handleStart = async () => {
+    if (!selectedDataset || items.length === 0 || isSubmitting) {
+      return;
+    }
+
+    const results = await runUploads(items);
+    const succeeded = results.filter(
+      (item) => item.status === "done" || item.status === "duplicate",
+    );
+    const failed = results.filter((item) => item.status === "error");
+
+    // Single-file upload preserves the original UX: jump straight to its status
+    // page. Bulk stays here and shows the per-file outcome.
+    if (results.length === 1 && succeeded.length === 1) {
+      navigate(
+        `/ingestions/status?document_id=${succeeded[0].documentId}&dataset_id=${selectedDataset}`,
+      );
+      return;
+    }
+
+    if (failed.length === 0) {
+      toast.success(`Started ingestion for ${succeeded.length} file(s).`);
+    } else if (succeeded.length === 0) {
+      toast.error(`All ${failed.length} upload(s) failed.`);
+    } else {
+      toast.info(
+        `${succeeded.length} started, ${failed.length} failed. Review the list below.`,
+      );
+    }
+  };
+
+  const retryFailed = async () => {
+    if (isSubmitting) return;
+    const failedItems = items.filter((item) => item.status === "error");
+    if (failedItems.length === 0) return;
+    const results = await runUploads(failedItems);
+    const stillFailed = results.filter((item) => item.status === "error");
+    if (stillFailed.length === 0) {
+      toast.success(`Retried ${results.length} file(s) successfully.`);
+    } else {
+      toast.error(`${stillFailed.length} of ${results.length} still failed.`);
+    }
+  };
+
+  const totalSize = items.reduce((sum, item) => sum + item.file.size, 0);
+  const completedCount = items.filter(
+    (item) =>
+      item.status === "done" ||
+      item.status === "duplicate" ||
+      item.status === "error",
+  ).length;
+  const startedCount = items.filter((item) => item.status === "done").length;
+  const duplicateCount = items.filter(
+    (item) => item.status === "duplicate",
+  ).length;
+  const failedCount = items.filter((item) => item.status === "error").length;
   const canStart =
-    Boolean(selectedDataset) && Boolean(file) && !isSubmitting;
-  const filledCount = [Boolean(selectedDataset), Boolean(file), true].filter(Boolean).length;
+    Boolean(selectedDataset) && items.length > 0 && !isSubmitting;
+  const filledCount = [
+    Boolean(selectedDataset),
+    items.length > 0,
+    true,
+  ].filter(Boolean).length;
 
   const hint =
     !selectedDataset
       ? "Create or select a dataset to continue"
-      : !file
-        ? "Upload a file to continue"
+      : items.length === 0
+        ? "Add files or a folder to continue"
         : `${mode === "guided" ? "Guided" : "Auto"} mode is ready`;
 
   return (
@@ -305,7 +331,8 @@ export default function NewIngestionPage() {
             New Ingestion
           </h1>
           <p className="text-sm text-gray-500 mt-2">
-            Upload a document, choose a dataset, and start the ingestion pipeline.
+            Upload one or many files (or a whole folder), choose a dataset, and
+            start the ingestion pipeline.
           </p>
         </div>
 
@@ -321,113 +348,16 @@ export default function NewIngestionPage() {
             />
           </Field>
 
-          <Field label="File" done={Boolean(file)}>
-            {!file ? (
-              <div
-                onDrop={handleDrop}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onClick={() => fileInputRef.current?.click()}
-                className={cn(
-                  "relative border-2 border-dashed rounded-2xl cursor-pointer transition-all select-none overflow-hidden",
-                  dragOver
-                    ? "border-indigo-400 bg-indigo-50/60"
-                    : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/20 bg-white",
-                )}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  accept={SUPPORTED_FILE_EXTENSIONS.join(",")}
-                  onChange={handleSelect}
-                />
-
-                <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
-                  <div
-                    className={cn(
-                      "w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-all",
-                      dragOver ? "bg-indigo-100 scale-110" : "bg-gray-100",
-                    )}
-                  >
-                    <Upload
-                      className={cn(
-                        "size-6 transition-colors",
-                        dragOver ? "text-indigo-500" : "text-gray-400",
-                      )}
-                    />
-                  </div>
-
-                  <p
-                    className={cn(
-                      "text-sm font-semibold transition-colors",
-                      dragOver ? "text-indigo-700" : "text-gray-700",
-                    )}
-                  >
-                    {dragOver ? "Release to upload" : "Drop your file here"}
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    or{" "}
-                    <span className="text-indigo-600 font-medium underline underline-offset-2">
-                      browse files
-                    </span>
-                  </p>
-
-                  <div className="flex flex-wrap justify-center gap-1.5 mt-5">
-                    {FILE_TYPES.map((type) => (
-                      <span
-                        key={type}
-                        className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md tracking-wide"
-                      >
-                        {type}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Max {env.VITE_MAX_UPLOAD_MB} MB
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3.5 px-4 py-4 bg-white rounded-2xl border border-emerald-200 shadow-sm">
-                {(() => {
-                  const { icon: Icon, color } = getFileInfo(file);
-                  const [textColor, bgColor] = color.split(" ");
-                  return (
-                    <div
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                        bgColor,
-                      )}
-                    >
-                      <Icon className={cn("size-5", textColor)} />
-                    </div>
-                  );
-                })()}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {formatFileSize(file.size)} · Ready to process
-                  </p>
-                </div>
-                <CheckCircle2 className="size-5 text-emerald-500 flex-shrink-0" />
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleFileChange(null);
-                  }}
-                  className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-            )}
+          <Field label="Files" done={items.length > 0}>
+            <FilePicker
+              items={items}
+              totalSize={totalSize}
+              completedCount={completedCount}
+              isSubmitting={isSubmitting}
+              onAddFiles={addFiles}
+              onClear={clearItems}
+              onRemove={removeItem}
+            />
           </Field>
 
           <Field label="Ingestion Mode" done>
@@ -462,66 +392,38 @@ export default function NewIngestionPage() {
             </div>
           )}
 
-          <div className="pt-1 space-y-3">
-            <div className="flex items-center justify-center gap-2">
-              {["Dataset", "File", "Mode"].map((label, index) => {
-                const done = index < filledCount;
-                return (
-                  <div key={label} className="flex items-center gap-1.5">
-                    <div
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full transition-all",
-                        done ? "bg-emerald-500" : "bg-gray-300",
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        "text-xs font-medium transition-colors",
-                        done ? "text-emerald-600" : "text-gray-400",
-                      )}
-                    >
-                      {label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+          {finished && !isSubmitting && items.length > 0 && (
+            <ResultSummary
+              startedCount={startedCount}
+              duplicateCount={duplicateCount}
+              failedCount={failedCount}
+              onRetryFailed={() => void retryFailed()}
+            />
+          )}
 
-            <button
-              type="button"
-              onClick={() => void handleStart()}
-              disabled={!canStart}
-              className={cn(
-                "w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200",
-                canStart
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-200 active:scale-[0.99]"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed",
-              )}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Starting Ingestion
-                </>
-              ) : canStart ? (
-                <>
-                  {mode === "guided" ? (
-                    <ClipboardList className="size-4" />
-                  ) : (
-                    <Zap className="size-4" />
-                  )}
-                  {mode === "guided"
-                    ? "Start Guided Ingestion"
-                    : "Start Auto Ingestion"}
-                  <ArrowRight className="size-4" />
-                </>
-              ) : (
-                <>
-                  <span className="w-4 h-4 rounded-full border-2 border-gray-300 flex-shrink-0" />
-                  {hint}
-                </>
-              )}
-            </button>
+          <div className="pt-1 space-y-3">
+            <ReadinessSteps filledCount={filledCount} />
+
+            <StartIngestionButton
+              canStart={canStart}
+              isSubmitting={isSubmitting}
+              completedCount={completedCount}
+              itemCount={items.length}
+              mode={mode}
+              hint={hint}
+              onStart={() => void handleStart()}
+            />
+
+            {finished && items.length > 0 && !isSubmitting && (
+              <button
+                type="button"
+                onClick={() => navigate("/documents")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+              >
+                View documents
+                <ArrowRight className="size-4" />
+              </button>
+            )}
           </div>
         </div>
       </main>
@@ -529,333 +431,3 @@ export default function NewIngestionPage() {
   );
 }
 
-function Field({
-  label,
-  done,
-  children,
-}: {
-  label: string;
-  done: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-          {label}
-        </span>
-        {done && (
-          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
-            <CheckCircle2 className="size-2.5" /> Done
-          </span>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ModeCard({
-  selected,
-  onSelect,
-  accent,
-  icon: Icon,
-  badge,
-  title,
-  description,
-  time,
-  disabled = false,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  accent: "indigo" | "violet";
-  icon: IconComponent;
-  badge: string;
-  title: string;
-  description: string;
-  time: string;
-  disabled?: boolean;
-}) {
-  const colors = {
-    indigo: {
-      border: selected ? "border-indigo-300" : "border-gray-200 hover:border-indigo-200",
-      bg: selected ? "bg-indigo-50/70" : "bg-white hover:bg-indigo-50/30",
-      ring: selected ? "ring-1 ring-indigo-200" : "",
-      iconBg: selected ? "bg-indigo-100" : "bg-gray-100",
-      iconColor: selected ? "text-indigo-600" : "text-gray-400",
-      badge: selected ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-400",
-      time: selected ? "text-indigo-500" : "text-gray-400",
-    },
-    violet: {
-      border: selected ? "border-violet-300" : "border-gray-200 hover:border-violet-200",
-      bg: selected ? "bg-violet-50/70" : "bg-white hover:bg-violet-50/30",
-      ring: selected ? "ring-1 ring-violet-200" : "",
-      iconBg: selected ? "bg-violet-100" : "bg-gray-100",
-      iconColor: selected ? "text-violet-600" : "text-gray-400",
-      badge: selected ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-400",
-      time: selected ? "text-violet-500" : "text-gray-400",
-    },
-  }[accent];
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      disabled={disabled}
-      className={cn(
-        "flex flex-col items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all w-full",
-        colors.border,
-        colors.bg,
-        colors.ring,
-        disabled && "opacity-70",
-      )}
-    >
-      <div className="flex items-center justify-between w-full">
-        <div
-          className={cn(
-            "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
-            colors.iconBg,
-          )}
-        >
-          <Icon className={cn("size-4.5 transition-colors", colors.iconColor)} />
-        </div>
-        <span
-          className={cn(
-            "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide transition-colors",
-            colors.badge,
-          )}
-        >
-          {badge}
-        </span>
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-sm font-bold text-gray-900">{title}</p>
-        <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-      </div>
-
-      <div className="flex items-center gap-1.5 mt-auto pt-1 w-full">
-        <div
-          className={cn(
-            "w-1 h-1 rounded-full flex-shrink-0 transition-colors",
-            selected
-              ? accent === "indigo"
-                ? "bg-indigo-400"
-                : "bg-violet-400"
-              : "bg-gray-300",
-          )}
-        />
-        <span className={cn("text-[11px] font-medium transition-colors", colors.time)}>
-          Avg. time: {time}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function DatasetPicker({
-  datasets,
-  value,
-  onChange,
-  isLoading,
-  error,
-  onOpenManage,
-}: {
-  datasets: TDataset[];
-  value: string;
-  onChange: (id: string) => void;
-  isLoading: boolean;
-  error: string;
-  onOpenManage: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  const selected = datasets.find((dataset) => dataset.id === value) ?? null;
-  const filtered = query.trim()
-    ? datasets.filter((dataset) =>
-        dataset.name.toLowerCase().includes(query.toLowerCase()),
-      )
-    : datasets;
-
-  useEffect(() => {
-    const handleDocumentMouseDown = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-        setQuery("");
-      }
-    };
-
-    document.addEventListener("mousedown", handleDocumentMouseDown);
-    return () => document.removeEventListener("mousedown", handleDocumentMouseDown);
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      window.setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={() => !isLoading && datasets.length > 0 && setOpen((current) => !current)}
-        disabled={isLoading || datasets.length === 0}
-        className={cn(
-          "w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 bg-white text-left transition-all",
-          open
-            ? "border-indigo-300 ring-2 ring-indigo-50 shadow-sm"
-            : "border-gray-200 hover:border-indigo-200 hover:shadow-sm",
-          (isLoading || datasets.length === 0) && "cursor-not-allowed opacity-80",
-        )}
-      >
-        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
-          <FolderOpen className="size-4 text-indigo-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          {isLoading ? (
-            <p className="text-sm text-gray-400">Loading datasets…</p>
-          ) : selected ? (
-            <>
-              <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
-                {selected.name}
-              </p>
-              <p className="text-xs text-gray-400 leading-tight mt-0.5">
-                {selected.documentCount} docs · {selected.status}
-              </p>
-            </>
-          ) : datasets.length === 0 ? (
-            <p className="text-sm text-gray-400">No datasets available</p>
-          ) : (
-            <p className="text-sm text-gray-400">Select a dataset…</p>
-          )}
-        </div>
-        {isLoading ? (
-          <Loader2 className="size-4 text-gray-400 animate-spin flex-shrink-0" />
-        ) : (
-          <ChevronDown
-            className={cn(
-              "size-4 text-gray-400 transition-transform flex-shrink-0",
-              open && "rotate-180",
-            )}
-          />
-        )}
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden">
-          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
-            <Search className="size-4 text-gray-400 flex-shrink-0" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search datasets…"
-              className="flex-1 text-sm text-gray-800 placeholder:text-gray-400 outline-none bg-transparent"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="max-h-56 overflow-y-auto py-1.5">
-            {filtered.length === 0 ? (
-              <div className="flex flex-col items-center py-8 gap-2">
-                <Database className="size-6 text-gray-300" />
-                <p className="text-xs text-gray-400">
-                  {datasets.length === 0 && !error
-                    ? "Create a dataset before starting ingestion."
-                    : `No datasets match "${query}"`}
-                </p>
-              </div>
-            ) : (
-              filtered.map((dataset) => {
-                const selectedItem = dataset.id === value;
-                return (
-                  <button
-                    key={dataset.id}
-                    type="button"
-                    onClick={() => {
-                      onChange(dataset.id);
-                      setOpen(false);
-                      setQuery("");
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-4 py-2.5 transition-all text-left",
-                      selectedItem ? "bg-indigo-50" : "hover:bg-gray-50",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        selectedItem ? "bg-indigo-100" : "bg-gray-100",
-                      )}
-                    >
-                      <FolderOpen
-                        className={cn(
-                          "size-3.5",
-                          selectedItem ? "text-indigo-600" : "text-gray-400",
-                        )}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={cn(
-                          "text-sm font-medium truncate",
-                          selectedItem ? "text-indigo-900" : "text-gray-800",
-                        )}
-                      >
-                        {dataset.name}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {dataset.documentCount} docs · {dataset.tags.join(", ") || "No tags"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span
-                        className={cn(
-                          "text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                          dataset.status === "active"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-gray-100 text-gray-500",
-                        )}
-                      >
-                        {dataset.status}
-                      </span>
-                      {selectedItem && (
-                        <CheckCircle2 className="size-4 text-indigo-500" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          <div className="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between bg-gray-50/50">
-            <p className="text-xs text-gray-400">{datasets.length} datasets</p>
-            <button
-              type="button"
-              onClick={onOpenManage}
-              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
-            >
-              Manage datasets →
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
