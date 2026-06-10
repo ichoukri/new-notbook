@@ -40,6 +40,10 @@ export default function IngestionStatusPage() {
   const [document, setDocument] = useState<TIngestionDocument | null>(null);
   const [dataset, setDataset] = useState<TDataset | null>(null);
   const [chunks, setChunks] = useState<TIngestionChunk[]>([]);
+  // Bumped to force a chunk refetch after an edit/apply, even when the
+  // document's id/status/updatedAt don't change (e.g. a merge that leaves the
+  // doc paused at the same awaiting-approval stage).
+  const [chunksReloadKey, setChunksReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingChunks, setIsLoadingChunks] = useState(false);
   const [pageError, setPageError] = useState("");
@@ -242,7 +246,12 @@ export default function IngestionStatusPage() {
     return () => {
       cancelled = true;
     };
-  }, [document?.id, document?.processingStatus, document?.updatedAt]);
+  }, [
+    document?.id,
+    document?.processingStatus,
+    document?.updatedAt,
+    chunksReloadKey,
+  ]);
 
   // Fetch the partition stage's output when paused for partition review.
   // The backend returns a small dict like
@@ -341,8 +350,11 @@ export default function IngestionStatusPage() {
         { operations: TChunkEditOperation[] }
       >(`/documents/${document.id}/stages/${stage}/edit`, { operations });
       setDocument(mapBackendDocument(response.data));
-      // Force the chunk-loading effect to refetch the rebuilt version.
+      // Force the chunk-loading effect to refetch the rebuilt version. The
+      // reload key guarantees the effect re-runs even if the document's
+      // id/status/updatedAt are unchanged by the edit.
       setChunks([]);
+      setChunksReloadKey((key) => key + 1);
       toast.success("Chunks updated. Review and approve to continue.");
     } catch (error) {
       if (getApiErrorStatus(error) === 409) {

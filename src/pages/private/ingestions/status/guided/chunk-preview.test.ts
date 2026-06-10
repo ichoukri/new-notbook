@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TIngestionChunk } from "@/core/ingestions";
-import { buildChunkPreview, splitIntoBlocks } from "./chunk-preview";
+import {
+  buildChunkPreview,
+  buildSplitBlocks,
+  splitIntoBlocks,
+  splitTextKeepingTables,
+} from "./chunk-preview";
 
 const baseChunk = (id: string, index: number, text: string): TIngestionChunk => ({
   id,
@@ -88,5 +93,43 @@ describe("guided chunk preview helpers", () => {
       status: "unchanged",
       displayIndex: 0,
     });
+  });
+
+  it("keeps a markdown table atomic when splitting blocks", () => {
+    const text = "Intro line\n| A | B |\n| 1 | 2 |\n| 3 | 4 |";
+    expect(splitTextKeepingTables(text)).toEqual([
+      "Intro line",
+      "| A | B |\n| 1 | 2 |\n| 3 | 4 |",
+    ]);
+  });
+
+  it("appends image blocks after text/table blocks", () => {
+    const blocks = buildSplitBlocks("First\n\nSecond", ["/img/a.png"]);
+    expect(blocks).toEqual([
+      { kind: "text", text: "First", isTable: false },
+      { kind: "text", text: "Second", isTable: false },
+      { kind: "image", url: "/img/a.png" },
+    ]);
+  });
+
+  it("assigns split images to their target segment in the preview", () => {
+    const chunk: TIngestionChunk = {
+      ...baseChunk("chunk-1", 0, "A\n\nB"),
+      originalContent: { text: "A\n\nB", images: ["/img/x.png"] },
+    };
+    const preview = buildChunkPreview(
+      [chunk],
+      [
+        {
+          op: "split",
+          chunk_id: "chunk-1",
+          segments: ["A", "B"],
+          image_segments: [1],
+        },
+      ],
+      false,
+    );
+    expect(preview.map((row) => row.imageUrls)).toEqual([[], ["/img/x.png"]]);
+    expect(preview[1].contentTypes).toEqual(["text", "image"]);
   });
 });

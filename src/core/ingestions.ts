@@ -142,7 +142,14 @@ export type TChunkEditOperation =
       chunk_metadata?: Record<string, unknown>;
     }
   | { op: "delete"; chunk_id: string }
-  | { op: "split"; chunk_id: string; segments: string[] }
+  | {
+      op: "split";
+      chunk_id: string;
+      segments: string[];
+      // For each source-chunk image (in imageUrls order), the index of the
+      // resulting segment it attaches to. Omit → all images go to segment 0.
+      image_segments?: number[];
+    }
   | { op: "merge"; chunk_ids: string[]; separator?: string };
 
 export type TIngestionDocument = {

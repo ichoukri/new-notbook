@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import {
   PREVIEW_STATUS_BADGE,
   type PreviewChunk,
-  splitIntoBlocks,
+  type SplitBlock,
+  buildSplitBlocks,
 } from "./chunk-preview";
 
 type ChunkReviewRowProps = {
@@ -36,7 +37,7 @@ type ChunkReviewRowProps = {
   onCancelMode: () => void;
   onSaveEdit: (serverId: string) => void;
   onToggleSplitAt: (blockIndex: number) => void;
-  onConfirmSplit: (serverId: string, blocks: string[]) => void;
+  onConfirmSplit: (serverId: string, blocks: SplitBlock[]) => void;
   onMerge: (firstId: string, secondId: string) => void;
   onPreviewImage: (imageUrl: string) => void;
 };
@@ -67,7 +68,9 @@ export function ChunkReviewRow({
   const canAct = row.serverId != null && !isDeleted;
   const badge =
     row.status === "unchanged" ? null : PREVIEW_STATUS_BADGE[row.status];
-  const blocks = isSplitting ? splitIntoBlocks(row.content) : [];
+  const blocks = isSplitting
+    ? buildSplitBlocks(row.content, row.imageUrls)
+    : [];
   const splitCount = splitAfter.size + 1;
   const mergeableHere =
     !editorOpen &&
@@ -209,16 +212,35 @@ export function ChunkReviewRow({
         ) : isSplitting && row.serverId ? (
           <div className="space-y-2">
             <p className="text-[11px] text-violet-600">
-              Click a gap to add a split point. This chunk becomes{" "}
-              <strong>{splitCount}</strong> chunk
+              Click a gap to add a split point. Images and tables move as whole
+              units. This chunk becomes <strong>{splitCount}</strong> chunk
               {splitCount === 1 ? "" : "s"}.
             </p>
-            <div className="overflow-hidden rounded-lg border border-violet-200">
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-violet-200">
               {blocks.map((block, blockIndex) => (
                 <Fragment key={blockIndex}>
-                  <div className="whitespace-pre-wrap bg-white px-3 py-2 text-sm leading-relaxed text-gray-800">
-                    {block}
-                  </div>
+                  {block.kind === "image" ? (
+                    <div className="flex items-center gap-2 bg-amber-50/40 px-3 py-2">
+                      <img
+                        src={buildChunkAssetUrl(block.url)}
+                        alt="chunk image"
+                        crossOrigin="use-credentials"
+                        loading="lazy"
+                        className="size-16 rounded-md border border-gray-200 object-cover"
+                      />
+                      <span className="text-[11px] font-medium text-amber-700">
+                        Image
+                      </span>
+                    </div>
+                  ) : block.isTable ? (
+                    <div className="overflow-x-auto bg-white px-3 py-2 text-sm text-gray-800">
+                      <MarkdownContent content={block.text} />
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap bg-white px-3 py-2 text-sm leading-relaxed text-gray-800">
+                      {block.text}
+                    </div>
+                  )}
                   {blockIndex < blocks.length - 1 && (
                     <button
                       type="button"

@@ -48,6 +48,73 @@ export function splitIntoBlocks(text: string): string[] {
   return lines.length > 1 ? lines : [trimmed];
 }
 
+// Detect a markdown table fragment (a run of pipe-rows).
+function isTableText(text: string): boolean {
+  const lines = text.split(/\n/).filter((line) => line.trim() !== "");
+  return lines.length > 0 && lines.every((line) => line.trim().startsWith("|"));
+}
+
+// Split text into blocks while keeping a markdown table (consecutive pipe-rows)
+// together as one block, so the user can't accidentally cut through the middle
+// of a table when splitting. Splits on blank lines first, then walks each
+// paragraph's lines grouping table rows together and other lines apart.
+export function splitTextKeepingTables(text: string): string[] {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return [];
+  const paragraphs = trimmed
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const out: string[] = [];
+  for (const paragraph of paragraphs) {
+    const lines = paragraph
+      .split(/\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length <= 1) {
+      out.push(paragraph);
+      continue;
+    }
+    let tableBuffer: string[] = [];
+    const flush = () => {
+      if (tableBuffer.length) {
+        out.push(tableBuffer.join("\n"));
+        tableBuffer = [];
+      }
+    };
+    for (const line of lines) {
+      if (line.startsWith("|")) tableBuffer.push(line);
+      else {
+        flush();
+        out.push(line);
+      }
+    }
+    flush();
+  }
+  return out;
+}
+
+export type SplitBlock =
+  | { kind: "text"; text: string; isTable: boolean }
+  | { kind: "image"; url: string };
+
+// The ordered, atomic blocks shown in the split editor: text/table fragments
+// followed by each image. Split points sit between these blocks, so images and
+// tables move as whole units into a resulting chunk.
+export function buildSplitBlocks(
+  content: string,
+  imageUrls: string[],
+): SplitBlock[] {
+  const blocks: SplitBlock[] = splitTextKeepingTables(content).map((text) => ({
+    kind: "text",
+    text,
+    isTable: isTableText(text),
+  }));
+  for (const url of imageUrls) blocks.push({ kind: "image", url });
+  return blocks;
+}
+
 export function opTouches(op: TChunkEditOperation, id: string): boolean {
   return op.op === "merge" ? op.chunk_ids.includes(id) : op.chunk_id === id;
 }
@@ -63,7 +130,10 @@ export function buildChunkPreview(
 
   const editText = new Map<string, string>();
   const deleteIds = new Set<string>();
-  const splitSegs = new Map<string, string[]>();
+  const splitOps = new Map<
+    string,
+    { segments: string[]; imageSegments?: number[] }
+  >();
   const mergeAnchor = new Map<string, string[]>();
   const mergeConsumed = new Set<string>();
 
@@ -76,7 +146,10 @@ export function buildChunkPreview(
     } else if (op.op === "delete") {
       deleteIds.add(op.chunk_id);
     } else if (op.op === "split") {
-      splitSegs.set(op.chunk_id, op.segments);
+      splitOps.set(op.chunk_id, {
+        segments: op.segments,
+        imageSegments: op.image_segments,
+      });
     } else if (op.op === "merge") {
       const ordered = [...op.chunk_ids].sort(
         (a, b) => (indexOf.get(a) ?? 0) - (indexOf.get(b) ?? 0),
@@ -108,9 +181,20 @@ export function buildChunkPreview(
       continue;
     }
 
-    if (splitSegs.has(id)) {
-      const segments = splitSegs.get(id)!;
-      segments.forEach((segment, segmentIndex) =>
+    if (splitOps.has(id)) {
+      const { segments, imageSegments } = splitOps.get(id)!;
+      const parentImages = getChunkImageUrls(chunk);
+      const targetOf = (imageIndex: number) => {
+        const target =
+          imageSegments && imageIndex < imageSegments.length
+            ? imageSegments[imageIndex]
+            : 0;
+        return target >= 0 && target < segments.length ? target : 0;
+      };
+      segments.forEach((segment, segmentIndex) => {
+        const segmentImages = parentImages.filter(
+          (_, imageIndex) => targetOf(imageIndex) === segmentIndex,
+        );
         rows.push({
           key: `split:${id}:${segmentIndex}`,
           serverId: null,
@@ -118,11 +202,11 @@ export function buildChunkPreview(
           displayIndex: 0,
           pageNumber: chunk.pageNumber ?? null,
           charCount: segment.length,
-          contentTypes: segmentIndex === 0 ? (chunk.contentTypes ?? []) : [],
-          imageUrls: segmentIndex === 0 ? getChunkImageUrls(chunk) : [],
+          contentTypes: segmentImages.length ? ["text", "image"] : ["text"],
+          imageUrls: segmentImages,
           content: segment,
-        }),
-      );
+        });
+      });
       continue;
     }
 

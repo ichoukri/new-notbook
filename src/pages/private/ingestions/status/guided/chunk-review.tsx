@@ -7,7 +7,11 @@ import type {
   TChunkEditOperation,
   TIngestionChunk,
 } from "@/core/ingestions";
-import { buildChunkPreview, opTouches } from "./chunk-preview";
+import {
+  type SplitBlock,
+  buildChunkPreview,
+  opTouches,
+} from "./chunk-preview";
 import { ChunkImagePreviewDialog } from "./chunk-image-preview-dialog";
 import { ChunkReviewRow } from "./chunk-review-row";
 import { ReviewFilterBar } from "./review-filter-bar";
@@ -97,21 +101,67 @@ export function ChunkReview({
       return next;
     });
 
-  const confirmSplit = (serverId: string, blocks: string[]) => {
+  const confirmSplit = (serverId: string, blocks: SplitBlock[]) => {
     const cuts = [...splitAfter].sort((a, b) => a - b);
-    const segments: string[] = [];
+    // Partition the ordered blocks into contiguous groups at each cut.
+    const groups: SplitBlock[][] = [];
     let start = 0;
     for (const cut of cuts) {
-      segments.push(blocks.slice(start, cut + 1).join("\n\n"));
+      groups.push(blocks.slice(start, cut + 1));
       start = cut + 1;
     }
-    segments.push(blocks.slice(start).join("\n\n"));
-    const cleaned = segments.map((segment) => segment.trim()).filter(Boolean);
-    if (cleaned.length < 2) {
-      toast.error("Add at least one split point first.");
+    groups.push(blocks.slice(start));
+
+    // Only text-bearing groups become resulting chunks (the backend requires
+    // every chunk to carry text). The text per chunk = its text/table blocks
+    // joined; each group records which resulting segment its content maps to.
+    const segments: string[] = [];
+    const groupToSegment: (number | null)[] = groups.map((group) => {
+      const text = group
+        .filter((block) => block.kind === "text")
+        .map((block) => block.text)
+        .join("\n\n")
+        .trim();
+      if (!text) return null;
+      segments.push(text);
+      return segments.length - 1;
+    });
+
+    if (segments.length < 2) {
+      toast.error("Add a split point between text to divide this chunk.");
       return;
     }
-    stageOp({ op: "split", chunk_id: serverId, segments: cleaned }, [serverId]);
+
+    // Assign each image (in source-chunk image order) to a segment: its own
+    // group if that group has text, otherwise it rides along with the nearest
+    // preceding text segment — so an image is never orphaned into a text-less
+    // chunk, but still follows your split boundaries.
+    const imageSegments: number[] = [];
+    groups.forEach((group, groupIndex) => {
+      for (const block of group) {
+        if (block.kind !== "image") continue;
+        let target = groupToSegment[groupIndex];
+        if (target === null) {
+          for (let g = groupIndex - 1; g >= 0; g -= 1) {
+            if (groupToSegment[g] !== null) {
+              target = groupToSegment[g];
+              break;
+            }
+          }
+        }
+        imageSegments.push(target ?? 0);
+      }
+    });
+
+    stageOp(
+      {
+        op: "split",
+        chunk_id: serverId,
+        segments,
+        image_segments: imageSegments.length ? imageSegments : undefined,
+      },
+      [serverId],
+    );
     resetModes();
   };
 
