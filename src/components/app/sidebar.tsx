@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { backendApi } from "@/core/api";
 import { getUserDisplayName, getUserInitials } from "@/core/auth";
 import { useGlobalStore } from "@/core/global-store/index";
+import brandIcon from "@/assets/big-icon.svg";
 import {
   LayoutDashboard,
   Database,
@@ -13,8 +14,6 @@ import {
   Box,
   Activity,
   Settings,
-  ChevronDown,
-  Sparkles,
   Plus,
   LogOut,
   HelpCircle,
@@ -51,9 +50,6 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useGlobalStore((state) => state.user);
-  const workspaceLabel = user?.tenantId
-    ? `Tenant ${user.tenantId.slice(0, 8)}`
-    : "Workspace";
 
   const isActive = (path: string) => {
     if (path === "/") return location.pathname === "/";
@@ -66,22 +62,13 @@ export default function Sidebar() {
 
   return (
     <aside className="flex flex-col h-full bg-white">
-      {/* Workspace switcher */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        <button className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl hover:bg-gray-50 transition-colors group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <Sparkles className="size-4 text-white" />
-          </div>
-          <div className="flex-1 text-left min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
-              {workspaceLabel}
-            </p>
-            <p className="text-xs text-gray-500 truncate">
-              {user?.roleId ? `Role ${user.roleId.slice(0, 8)}` : "Data platform"}
-            </p>
-          </div>
-          <ChevronDown className="size-3.5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
-        </button>
+      {/* Brand */}
+      <div className="border-b border-gray-100 px-4 py-4">
+        <img
+          src={brandIcon}
+          alt="Data Platform"
+          className="h-8 w-auto max-w-full object-contain"
+        />
       </div>
 
       {/* New Ingestion CTA */}

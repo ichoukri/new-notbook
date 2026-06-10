@@ -1,10 +1,12 @@
 import { Fragment } from "react";
 import {
+  CheckSquare,
   GitMerge,
   Pencil,
   Plus,
   Save,
   Scissors,
+  Square,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -40,6 +42,9 @@ type ChunkReviewRowProps = {
   onConfirmSplit: (serverId: string, blocks: SplitBlock[]) => void;
   onMerge: (firstId: string, secondId: string) => void;
   onPreviewImage: (imageUrl: string) => void;
+  selectable: boolean;
+  isSelected: boolean;
+  onToggleSelect: (serverId: string) => void;
 };
 
 export function ChunkReviewRow({
@@ -63,6 +68,9 @@ export function ChunkReviewRow({
   onConfirmSplit,
   onMerge,
   onPreviewImage,
+  selectable,
+  isSelected,
+  onToggleSelect,
 }: ChunkReviewRowProps) {
   const isDeleted = row.status === "deleted";
   const canAct = row.serverId != null && !isDeleted;
@@ -88,12 +96,28 @@ export function ChunkReviewRow({
           (isEditing || isSplitting) &&
             "rounded-xl bg-violet-50/40 ring-1 ring-violet-100",
           isDeleted && "opacity-60",
+          isSelected && !isDeleted && "bg-violet-50/40",
           (row.status === "added" || row.status === "merged") &&
             "border-l-2 border-emerald-300",
           row.status === "edited" && "border-l-2 border-violet-300",
         )}
       >
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          {selectable && row.serverId && (
+            <button
+              type="button"
+              onClick={() => onToggleSelect(row.serverId as string)}
+              disabled={busy}
+              className="text-gray-300 transition-colors hover:text-violet-600 disabled:opacity-40"
+              title={isSelected ? "Deselect" : "Select"}
+            >
+              {isSelected ? (
+                <CheckSquare className="size-4 text-violet-600" />
+              ) : (
+                <Square className="size-4" />
+              )}
+            </button>
+          )}
           <span className="font-mono">
             {row.displayIndex >= 0 ? `#${row.displayIndex}` : "removed"}
           </span>

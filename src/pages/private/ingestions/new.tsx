@@ -17,13 +17,7 @@ import type {
   TBackendPrepareUploadResponse,
 } from "@/core/ingestions";
 import axios from "axios";
-import {
-  AlertCircle,
-  ArrowRight,
-  ClipboardList,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { AlertCircle, ArrowRight, ClipboardList, Zap } from "lucide-react";
 import { DatasetPicker } from "./new-ingestion/dataset-picker";
 import { Field } from "./new-ingestion/field";
 import { FilePicker } from "./new-ingestion/file-picker";
@@ -98,38 +92,52 @@ export default function NewIngestionPage() {
   }, []);
 
   // Add a batch of files to the selection: keep supported/in-size ones, dedupe
-  // against what's already chosen, and surface a one-line summary of skips.
+  // against what's already chosen, and surface a one-line summary.
   const addFiles = (incoming: File[]) => {
     if (incoming.length === 0) return;
     const { accepted, skippedUnsupported, skippedOversize } =
       collectAcceptedFiles(incoming);
 
-    let addedCount = 0;
-    setItems((prev) => {
-      const seen = new Set(prev.map((item) => item.id));
-      const next = [...prev];
-      for (const file of accepted) {
-        const id = makeItemId(file);
-        if (seen.has(id)) continue;
-        seen.add(id);
-        next.push({ id, file, status: "pending" });
-        addedCount += 1;
+    // Dedupe purely against the current selection — never inside the state
+    // updater (React invokes updaters twice in StrictMode, which would
+    // double-count). Compute the new rows and counts up front.
+    const existingIds = new Set(items.map((item) => item.id));
+    const fresh: UploadItem[] = [];
+    let duplicates = 0;
+    for (const file of accepted) {
+      const id = makeItemId(file);
+      if (existingIds.has(id)) {
+        duplicates += 1;
+        continue;
       }
-      return next;
-    });
-    setFinished(false);
+      existingIds.add(id);
+      fresh.push({ id, file, status: "pending" });
+    }
+
+    if (fresh.length > 0) {
+      // The updater re-dedupes against the latest state so a double-invoke (or
+      // a rapid second call) can't add the same file twice — idempotent.
+      setItems((prev) => {
+        const seen = new Set(prev.map((item) => item.id));
+        return [...prev, ...fresh.filter((item) => !seen.has(item.id))];
+      });
+      setFinished(false);
+    }
 
     const skipped: string[] = [];
     if (skippedUnsupported > 0)
       skipped.push(`${skippedUnsupported} unsupported`);
     if (skippedOversize > 0)
       skipped.push(`${skippedOversize} over ${env.VITE_MAX_UPLOAD_MB} MB`);
-    const duplicates = accepted.length - addedCount;
     if (duplicates > 0) skipped.push(`${duplicates} already added`);
 
-    if (addedCount > 0 && skipped.length > 0) {
-      toast.info(`Added ${addedCount} file(s) · skipped ${skipped.join(", ")}.`);
-    } else if (addedCount === 0 && skipped.length > 0) {
+    if (fresh.length > 0) {
+      toast.success(
+        skipped.length
+          ? `Added ${fresh.length} file(s) · skipped ${skipped.join(", ")}.`
+          : `Added ${fresh.length} file${fresh.length === 1 ? "" : "s"}.`,
+      );
+    } else if (skipped.length > 0) {
       toast.error(`No files added — skipped ${skipped.join(", ")}.`);
     }
   };
@@ -323,10 +331,6 @@ export default function NewIngestionPage() {
 
       <main className="flex-1 flex flex-col items-center px-6 pt-6 pb-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
-            <Sparkles className="size-3.5" />
-            AI-powered ingestion
-          </div>
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">
             New Ingestion
           </h1>

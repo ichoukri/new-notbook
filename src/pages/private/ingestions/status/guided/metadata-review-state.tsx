@@ -1,16 +1,5 @@
 import { useState } from "react";
-import {
-  CheckCircle2,
-  Database,
-  Globe,
-  Loader2,
-  Lock,
-  Save,
-  Shield,
-  Tag,
-  Users,
-  X,
-} from "lucide-react";
+import { CheckCircle2, Database, Loader2, Save, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ActionBar,
@@ -29,32 +18,6 @@ import type {
   TIngestionPipelineStep,
 } from "@/core/ingestions";
 import { cn } from "@/lib/utils";
-
-const VISIBILITY_OPTIONS: Array<{
-  value: TAccessVisibility;
-  label: string;
-  description: string;
-  icon: typeof Globe;
-}> = [
-  {
-    value: "private",
-    label: "Private",
-    description: "Only you can access this document.",
-    icon: Lock,
-  },
-  {
-    value: "tenant",
-    label: "Organisation",
-    description: "Everyone in your organisation can access it.",
-    icon: Globe,
-  },
-  {
-    value: "roles",
-    label: "Specific roles / users",
-    description: "Restrict access to the roles and users you list.",
-    icon: Shield,
-  },
-];
 
 export function MetadataReviewState({
   document,
@@ -94,24 +57,19 @@ export function MetadataReviewState({
   const [tagsInput, setTagsInput] = useState(
     asList(existingMeta.tags).join(", "),
   );
-  const [visibility, setVisibility] = useState<TAccessVisibility>(
-    existingPolicy.visibility === "private" ||
-      existingPolicy.visibility === "roles"
-      ? existingPolicy.visibility
-      : "tenant",
-  );
-  const [roleIdsInput, setRoleIdsInput] = useState(
-    asList(existingPolicy.role_ids).join(", "),
-  );
-  const [userIdsInput, setUserIdsInput] = useState(
-    asList(existingPolicy.user_ids).join(", "),
-  );
-
   const parseList = (value: string) =>
     value
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
+
+  // Access is no longer chosen here; preserve the document's existing policy
+  // (defaulting to organisation-wide) so the payload contract stays intact.
+  const visibility: TAccessVisibility =
+    existingPolicy.visibility === "private" ||
+    existingPolicy.visibility === "roles"
+      ? existingPolicy.visibility
+      : "tenant";
 
   const busy = isSaving || isCancelling;
 
@@ -124,8 +82,8 @@ export function MetadataReviewState({
       },
       access_policy: {
         visibility,
-        role_ids: visibility === "roles" ? parseList(roleIdsInput) : [],
-        user_ids: visibility === "roles" ? parseList(userIdsInput) : [],
+        role_ids: asList(existingPolicy.role_ids),
+        user_ids: asList(existingPolicy.user_ids),
       },
       complete,
     });
@@ -147,7 +105,7 @@ export function MetadataReviewState({
           </span>
         }
         status={<StatusPill label="Metadata · review" tone="violet" pulse />}
-        description="Add metadata and choose who can access this document, then complete the ingestion."
+        description="Add metadata, then complete the ingestion."
       />
 
       <PipelineStepper steps={pipeline} />
@@ -194,75 +152,6 @@ export function MetadataReviewState({
                   className={inputClass}
                 />
               </div>
-            </div>
-          </Panel>
-        </MotionItem>
-
-        <MotionItem>
-          <Panel icon={Shield} title="Access">
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                {VISIBILITY_OPTIONS.map((option) => {
-                  const Icon = option.icon;
-                  const active = visibility === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setVisibility(option.value)}
-                      disabled={busy}
-                      className={cn(
-                        "rounded-xl border p-3 text-left transition-all",
-                        active
-                          ? "border-violet-400 bg-violet-50/60 ring-2 ring-violet-100"
-                          : "border-gray-200 hover:border-gray-300",
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "mb-1.5 size-4",
-                          active ? "text-violet-600" : "text-gray-400",
-                        )}
-                      />
-                      <p className="text-sm font-medium text-gray-900">
-                        {option.label}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500">
-                        {option.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {visibility === "roles" && (
-                <div className="grid gap-3 pt-1 sm:grid-cols-2">
-                  <div>
-                    <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
-                      <Shield className="size-3.5" /> Role IDs
-                    </label>
-                    <input
-                      value={roleIdsInput}
-                      onChange={(event) => setRoleIdsInput(event.target.value)}
-                      disabled={busy}
-                      placeholder="role-a, role-b"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-1 text-xs font-medium text-gray-600">
-                      <Users className="size-3.5" /> User IDs
-                    </label>
-                    <input
-                      value={userIdsInput}
-                      onChange={(event) => setUserIdsInput(event.target.value)}
-                      disabled={busy}
-                      placeholder="user-1, user-2"
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </Panel>
         </MotionItem>

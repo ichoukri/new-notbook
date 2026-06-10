@@ -6,11 +6,17 @@ import {
 } from "@/core/datasets";
 import {
   getDocumentChunkCount,
+  getDocumentDatasetName,
+  getDocumentPipelineStatusPath,
   getDocumentStatusValue,
+  isDocumentActivelyProcessing,
+  isDocumentAwaitingReview,
+  isDocumentInPipeline,
 } from "@/core/documents";
 import {
   getDocumentStatusLabel,
   mapBackendDocument,
+  shouldLoadIngestionChunks,
   type TBackendDocument,
 } from "@/core/ingestions";
 
@@ -122,5 +128,95 @@ describe("formatting helpers", () => {
     expect(formatFileSize(512)).toBe("512 B");
     expect(formatFileSize(2048)).toBe("2.0 KB");
     expect(formatFileSize(5 * 1024 * 1024)).toBe("5.0 MB");
+  });
+});
+
+describe("document pipeline navigation helpers", () => {
+  it("routes active pipeline documents to the live status page", () => {
+    const document = mapBackendDocument({
+      ...backendDocument,
+      processing_status: "chunking",
+    });
+
+    expect(isDocumentInPipeline(document)).toBe(true);
+    expect(isDocumentActivelyProcessing(document)).toBe(true);
+    expect(isDocumentAwaitingReview(document)).toBe(false);
+    expect(getDocumentPipelineStatusPath(document)).toBe(
+      "/ingestions/status?document_id=doc-1&dataset_id=dataset-1",
+    );
+  });
+
+  it("treats metadata review as a resumable guided-review state", () => {
+    const document = mapBackendDocument({
+      ...backendDocument,
+      processing_status: "metadata_awaiting_approval",
+    });
+
+    expect(isDocumentInPipeline(document)).toBe(true);
+    expect(isDocumentActivelyProcessing(document)).toBe(false);
+    expect(isDocumentAwaitingReview(document)).toBe(true);
+    expect(getDocumentPipelineStatusPath(document)).toBe(
+      "/ingestions/status?document_id=doc-1&dataset_id=dataset-1",
+    );
+  });
+
+  it("keeps completed documents on the document detail route", () => {
+    const document = mapBackendDocument({
+      ...backendDocument,
+      processing_status: "completed",
+    });
+
+    expect(isDocumentInPipeline(document)).toBe(false);
+    expect(isDocumentActivelyProcessing(document)).toBe(false);
+    expect(getDocumentPipelineStatusPath(document)).toBeNull();
+  });
+
+  it("resolves dataset names with a stable fallback", () => {
+    const document = mapBackendDocument(backendDocument);
+
+    expect(
+      getDocumentDatasetName(document, new Map([["dataset-1", "Policies"]])),
+    ).toBe("Policies");
+    expect(getDocumentDatasetName(document, new Map())).toBe("dataset-1");
+    expect(
+      getDocumentDatasetName(
+        { ...document, datasetIds: [] },
+        new Map(),
+        "Unknown Dataset",
+      ),
+    ).toBe("Unknown Dataset");
+  });
+});
+
+describe("ingestion status helpers", () => {
+  it("loads chunks only when the current status needs chunk visibility", () => {
+    const loadableStatuses = [
+      "vectorization",
+      "completed",
+      "failed",
+      "chunking_awaiting_approval",
+      "summarising_awaiting_approval",
+      "vectorization_awaiting_approval",
+    ];
+
+    for (const status of loadableStatuses) {
+      expect(
+        shouldLoadIngestionChunks(
+          mapBackendDocument({ ...backendDocument, processing_status: status }),
+        ),
+      ).toBe(true);
+    }
+
+    for (const status of [
+      "queued",
+      "partitioning",
+      "metadata_awaiting_approval",
+    ]) {
+      expect(
+        shouldLoadIngestionChunks(
+          mapBackendDocument({ ...backendDocument, processing_status: status }),
+        ),
+      ).toBe(false);
+    }
   });
 });

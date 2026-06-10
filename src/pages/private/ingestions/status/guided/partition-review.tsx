@@ -1,4 +1,13 @@
-import { FileText, Layers, Loader2, Trash2, Undo2 } from "lucide-react";
+import {
+  CheckSquare,
+  FileText,
+  Layers,
+  Loader2,
+  MinusSquare,
+  Square,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -29,6 +38,7 @@ export function PartitionReview({
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [pageFilter, setPageFilter] = useState("all");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const typeOptions = [...new Set(elements.map((element) => element.type))].sort();
   const pageOptions = [
@@ -72,6 +82,55 @@ export function PartitionReview({
       return;
     }
     onSaveRemovals([...next].sort((a, b) => a - b));
+  };
+
+  // Selection operates on the currently-visible (filtered) elements.
+  const visibleIndices = filteredElements.map((element) => element.index);
+  const selectedVisibleCount = visibleIndices.filter((index) =>
+    selected.has(index),
+  ).length;
+  const allVisibleSelected =
+    visibleIndices.length > 0 && selectedVisibleCount === visibleIndices.length;
+
+  const toggleSelect = (index: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
+  const toggleSelectAll = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIndices.forEach((index) => next.delete(index));
+      } else {
+        visibleIndices.forEach((index) => next.add(index));
+      }
+      return next;
+    });
+
+  const clearSelection = () => setSelected(new Set());
+
+  const removeSelected = () => {
+    if (busy || selected.size === 0) return;
+    const next = new Set(removed);
+    selected.forEach((index) => next.add(index));
+    if (next.size >= elements.length) {
+      toast.error("At least one element must remain.");
+      return;
+    }
+    onSaveRemovals([...next].sort((a, b) => a - b));
+    clearSelection();
+  };
+
+  const keepSelected = () => {
+    if (busy || selected.size === 0) return;
+    const next = new Set(removed);
+    selected.forEach((index) => next.delete(index));
+    onSaveRemovals([...next].sort((a, b) => a - b));
+    clearSelection();
   };
 
   if (!output) {
@@ -164,17 +223,80 @@ export function PartitionReview({
                   No elements match your filters.
                 </p>
               ) : (
-                <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
+                <>
+                  <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/40 px-5 py-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      disabled={busy || visibleIndices.length === 0}
+                      className="flex items-center gap-1.5 font-medium text-gray-600 transition-colors hover:text-violet-700 disabled:opacity-40"
+                    >
+                      {allVisibleSelected ? (
+                        <CheckSquare className="size-4 text-violet-600" />
+                      ) : selectedVisibleCount > 0 ? (
+                        <MinusSquare className="size-4 text-violet-600" />
+                      ) : (
+                        <Square className="size-4 text-gray-400" />
+                      )}
+                      Select all
+                    </button>
+                    {selected.size > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">
+                          {selected.size} selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={keepSelected}
+                          disabled={busy}
+                          className="rounded-lg px-2 py-1 font-medium text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+                        >
+                          Keep
+                        </button>
+                        <button
+                          type="button"
+                          onClick={removeSelected}
+                          disabled={busy}
+                          className="flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+                        >
+                          <Trash2 className="size-3.5" /> Remove {selected.size}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearSelection}
+                          className="text-gray-400 transition-colors hover:text-gray-600"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
                   {filteredElements.map((element) => {
                     const isRemoved = removed.has(element.index);
+                    const isSelected = selected.has(element.index);
                     return (
                       <div
                         key={element.index}
                         className={cn(
                           "flex gap-3 px-5 py-3.5 transition-colors",
                           isRemoved && "bg-red-50/50",
+                          isSelected && !isRemoved && "bg-violet-50/40",
                         )}
                       >
+                        <button
+                          type="button"
+                          onClick={() => toggleSelect(element.index)}
+                          disabled={busy}
+                          className="flex h-fit items-center self-start pt-0.5 text-gray-300 transition-colors hover:text-violet-600 disabled:opacity-40"
+                          title={isSelected ? "Deselect" : "Select"}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="size-4 text-violet-600" />
+                          ) : (
+                            <Square className="size-4" />
+                          )}
+                        </button>
                         <div className="min-w-0 flex-1">
                           <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                             <span className="font-mono">#{element.index}</span>
@@ -273,7 +395,8 @@ export function PartitionReview({
                       </div>
                     );
                   })}
-                </div>
+                  </div>
+                </>
               )}
             </Panel>
           )}

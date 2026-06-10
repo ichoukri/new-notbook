@@ -529,6 +529,24 @@ export function isMetadataReview(document: TIngestionDocument): boolean {
   return document.processingStatus === "metadata_awaiting_approval";
 }
 
+export function shouldLoadIngestionChunksForStatus(status: string): boolean {
+  switch (status) {
+    case "vectorization":
+    case "completed":
+    case "failed":
+    case "chunking_awaiting_approval":
+    case "summarising_awaiting_approval":
+    case "vectorization_awaiting_approval":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function shouldLoadIngestionChunks(document: TIngestionDocument): boolean {
+  return shouldLoadIngestionChunksForStatus(document.processingStatus);
+}
+
 /**
  * Extract image URLs from a chunk's ``originalContent.images``.
  *

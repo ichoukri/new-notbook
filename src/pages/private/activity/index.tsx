@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDatasets, useDocuments } from "@/core/api/hooks";
 import {
-  getDocumentDatasetId,
+  getDocumentDatasetName,
   getDocumentMode,
   getDocumentStatusValue,
   getDocumentUploadedAtLabel,
+  isDocumentActivelyProcessing,
+  isDocumentAwaitingReview,
 } from "@/core/documents";
 import {
   formatIngestionLogTime,
@@ -61,18 +63,6 @@ const STATUS_FILTERS = [
   { value: "cancelled", label: "Cancelled" },
 ] as const;
 
-function isAwaitingApproval(document: TIngestionDocument): boolean {
-  return document.processingStatus.endsWith("_awaiting_approval");
-}
-
-function isRunning(document: TIngestionDocument): boolean {
-  return ![
-    "completed",
-    "failed",
-    "cancelled",
-  ].includes(document.processingStatus) && !isAwaitingApproval(document);
-}
-
 function getDocumentIconStyle(document: TIngestionDocument) {
   if (document.processingStatus === "completed") {
     return { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" };
@@ -80,20 +70,15 @@ function getDocumentIconStyle(document: TIngestionDocument) {
   if (document.processingStatus === "failed") {
     return { icon: AlertCircle, color: "text-red-600", bg: "bg-red-50" };
   }
-  if (isRunning(document)) {
+  if (isDocumentActivelyProcessing(document)) {
     return { icon: Loader2, color: "text-blue-600", bg: "bg-blue-50" };
   }
   return { icon: Clock, color: "text-amber-600", bg: "bg-amber-50" };
 }
 
-function getDatasetName(document: TIngestionDocument, datasetsById: Map<string, string>): string {
-  const datasetId = getDocumentDatasetId(document);
-  return (datasetId && datasetsById.get(datasetId)) || datasetId || "Unassigned dataset";
-}
-
 function matchesStatusFilter(document: TIngestionDocument, filter: string): boolean {
   if (filter === "all-status") return true;
-  if (filter === "awaiting") return isAwaitingApproval(document);
+  if (filter === "awaiting") return isDocumentAwaitingReview(document);
   return document.processingStatus === filter;
 }
 
@@ -128,7 +113,7 @@ export default function ActivityPage() {
     const query = search.trim().toLowerCase();
 
     return documentResource.items.filter((document) => {
-      const datasetName = getDatasetName(document, datasetsById);
+      const datasetName = getDocumentDatasetName(document, datasetsById);
       const matchSearch =
         !query ||
         document.filename.toLowerCase().includes(query) ||
@@ -145,7 +130,7 @@ export default function ActivityPage() {
   const stats = {
     total: documentResource.total || documentResource.items.length,
     complete: documentResource.items.filter((document) => document.processingStatus === "completed").length,
-    running: documentResource.items.filter(isRunning).length,
+    running: documentResource.items.filter(isDocumentActivelyProcessing).length,
     failed: documentResource.items.filter((document) => document.processingStatus === "failed").length,
   };
 
@@ -294,7 +279,7 @@ export default function ActivityPage() {
                         </td>
                         <td className="px-5 py-3.5">
                           <span className="text-xs text-gray-500 truncate max-w-xs block">
-                            {getDatasetName(document, datasetsById)}
+                            {getDocumentDatasetName(document, datasetsById)}
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
@@ -350,7 +335,7 @@ export default function ActivityPage() {
             {selectedDocument && (
               <DetailPanel
                 document={selectedDocument}
-                datasetName={getDatasetName(selectedDocument, datasetsById)}
+                datasetName={getDocumentDatasetName(selectedDocument, datasetsById)}
                 onClose={() => setSelectedDocumentId(null)}
                 onOpenDocument={() => navigate(`/documents/${selectedDocument.id}`)}
                 onOpenStatus={() => navigate(`/ingestions/status?document_id=${selectedDocument.id}`)}

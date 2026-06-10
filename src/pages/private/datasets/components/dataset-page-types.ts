@@ -1,6 +1,7 @@
 import { Archive, CheckCircle2 } from "lucide-react";
 
 export type DatasetStatusFilter = "all" | "active" | "archived";
+export type DatasetView = "grid" | "list";
 
 export type CreateDatasetPayload = {
   name: string;

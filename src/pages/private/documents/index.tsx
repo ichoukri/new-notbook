@@ -2,31 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
-import { StatusBadge, ModeBadge } from "@/components/app/status-badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  buildDocumentsCsv,
-  getDocumentChunkCount,
-  getDocumentDatasetId,
-  getDocumentMode,
-  getDocumentStatusValue,
-  getDocumentUploadedAtLabel,
-  getDocumentUploaderLabel,
-} from "@/core/documents";
+import { buildDocumentsCsv, getDocumentMode } from "@/core/documents";
 import {
   type TBackendDataset,
   type TDataset,
-  formatFileSize,
   mapBackendDataset,
 } from "@/core/datasets";
 import {
@@ -36,48 +17,10 @@ import {
   mapBackendDocument,
 } from "@/core/ingestions";
 import { useGlobalStore } from "@/core/global-store/index";
-import { cn } from "@/lib/utils";
-import {
-  ArrowUpRight,
-  Download,
-  FileText,
-  Layers,
-  Loader2,
-  RefreshCw,
-  Search,
-  Trash2,
-  Upload,
-} from "lucide-react";
-
-const FILE_TYPE_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
-  PDF: { bg: "bg-red-50", text: "text-red-600", icon: "PDF" },
-  DOCX: { bg: "bg-blue-50", text: "text-blue-600", icon: "DOC" },
-  XLSX: { bg: "bg-emerald-50", text: "text-emerald-600", icon: "XLS" },
-  CSV: { bg: "bg-teal-50", text: "text-teal-600", icon: "CSV" },
-  MD: { bg: "bg-gray-100", text: "text-gray-600", icon: "MD" },
-  TXT: { bg: "bg-gray-100", text: "text-gray-500", icon: "TXT" },
-  JSON: { bg: "bg-violet-50", text: "text-violet-600", icon: "JSON" },
-  JSONL: { bg: "bg-violet-50", text: "text-violet-600", icon: "JSONL" },
-  HTML: { bg: "bg-orange-50", text: "text-orange-600", icon: "HTML" },
-  PPTX: { bg: "bg-amber-50", text: "text-amber-600", icon: "PPT" },
-};
-
-const STATUS_FILTERS = [
-  { value: "all", label: "All Status" },
-  { value: "queued", label: "Queued" },
-  { value: "partitioning", label: "Extracting" },
-  { value: "chunking", label: "Chunking" },
-  { value: "summarising", label: "Summarising" },
-  { value: "vectorization", label: "Embedding" },
-  { value: "partitioning_awaiting_approval", label: "Awaiting Extract Review" },
-  { value: "chunking_awaiting_approval", label: "Awaiting Chunk Review" },
-  { value: "summarising_awaiting_approval", label: "Awaiting Summary Review" },
-  { value: "vectorization_awaiting_approval", label: "Awaiting Vector Review" },
-  { value: "metadata_awaiting_approval", label: "Awaiting Metadata Review" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "cancelled", label: "Cancelled" },
-] as const;
+import { DeleteDocumentDialog } from "./components/delete-document-dialog";
+import { DocumentsActionsBar } from "./components/documents-actions-bar";
+import { DocumentsFiltersBar } from "./components/documents-filters-bar";
+import { DocumentsTable } from "./components/documents-table";
 
 function downloadCsv(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
@@ -102,48 +45,10 @@ export default function DocumentsPage() {
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [pageError, setPageError] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<TIngestionDocument | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<TIngestionDocument | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reingestingIds, setReingestingIds] = useState<Set<string>>(new Set());
-
-  const handleReingestDocument = async (doc: TIngestionDocument) => {
-    setReingestingIds((prev) => new Set(prev).add(doc.id));
-    try {
-      const response = await backendApi.create<
-        TBackendDocumentMutationResponse,
-        undefined
-      >(`/documents/${doc.id}/reingest`, undefined);
-      setDocuments((prev) =>
-        prev.map((d) =>
-          d.id === doc.id ? mapBackendDocument(response.data) : d,
-        ),
-      );
-      toast.success(`"${doc.filename}" re-queued for ingestion.`);
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, "Could not re-ingest document."));
-    } finally {
-      setReingestingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(doc.id);
-        return next;
-      });
-    }
-  };
-
-  const handleDeleteDocument = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await backendApi.delete("/documents", deleteTarget.id);
-      setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
-      toast.success(`"${deleteTarget.filename}" deleted.`);
-      setDeleteTarget(null);
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, "Could not delete document."));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -239,105 +144,94 @@ export default function DocumentsPage() {
     [datasets],
   );
 
-  const filteredDocuments = useMemo(() => {
-    return documents.filter((document) => {
-      if (modeFilter === "all") {
-        return true;
-      }
+  const filteredDocuments = useMemo(
+    () =>
+      documents.filter(
+        (document) =>
+          modeFilter === "all" || getDocumentMode(document) === modeFilter,
+      ),
+    [documents, modeFilter],
+  );
 
-      return getDocumentMode(document) === modeFilter;
-    });
-  }, [documents, modeFilter]);
+  const handleReingestDocument = async (document: TIngestionDocument) => {
+    setReingestingIds((prev) => new Set(prev).add(document.id));
+
+    try {
+      const response = await backendApi.create<
+        TBackendDocumentMutationResponse,
+        undefined
+      >(`/documents/${document.id}/reingest`, undefined);
+
+      setDocuments((prev) =>
+        prev.map((item) =>
+          item.id === document.id ? mapBackendDocument(response.data) : item,
+        ),
+      );
+      toast.success(`"${document.filename}" re-queued for ingestion.`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not re-ingest document."));
+    } finally {
+      setReingestingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(document.id);
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!deleteTarget) return;
+
+    setIsDeleting(true);
+    try {
+      await backendApi.delete("/documents", deleteTarget.id);
+      setDocuments((prev) =>
+        prev.filter((document) => document.id !== deleteTarget.id),
+      );
+      toast.success(`"${deleteTarget.filename}" deleted.`);
+      setDeleteTarget(null);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not delete document."));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleExport = () => {
+    downloadCsv(
+      "documents.csv",
+      buildDocumentsCsv(filteredDocuments, {
+        datasetNamesById,
+        currentUser,
+      }),
+    );
+  };
 
   const isLoading = isLoadingDocuments || isLoadingDatasets;
 
   return (
-    <div className="flex flex-col flex-1 overflow-auto bg-gray-50/40">
+    <div className="flex flex-1 flex-col overflow-auto bg-gray-50/40">
       <Topbar title="Documents" />
 
       <main className="flex-1 overflow-auto">
-        <div className="max-w-[1400px] mx-auto w-full px-8 py-7 space-y-5">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-48 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              <input
-                placeholder="Search documents…"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="w-full h-9 pl-9 pr-4 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 transition-all placeholder:text-gray-400"
-              />
-            </div>
+        <div className="mx-auto w-full max-w-[1400px] space-y-5 px-8 py-7">
+          <DocumentsFiltersBar
+            datasets={datasets}
+            search={search}
+            datasetFilter={datasetFilter}
+            statusFilter={statusFilter}
+            modeFilter={modeFilter}
+            onSearchChange={setSearch}
+            onDatasetFilterChange={setDatasetFilter}
+            onStatusFilterChange={setStatusFilter}
+            onModeFilterChange={setModeFilter}
+            onUpload={() => navigate("/ingestions/new")}
+          />
 
-            <Select value={datasetFilter} onValueChange={setDatasetFilter}>
-              <SelectTrigger className="h-9 w-52 text-xs border-gray-200 rounded-xl">
-                <SelectValue placeholder="All Datasets" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Datasets</SelectItem>
-                {datasets.map((dataset) => (
-                  <SelectItem key={dataset.id} value={dataset.id}>
-                    {dataset.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9 w-40 text-xs border-gray-200 rounded-xl">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_FILTERS.map((statusOption) => (
-                  <SelectItem key={statusOption.value} value={statusOption.value}>
-                    {statusOption.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={modeFilter} onValueChange={setModeFilter}>
-              <SelectTrigger className="h-9 w-32 text-xs border-gray-200 rounded-xl">
-                <SelectValue placeholder="Mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Modes</SelectItem>
-                <SelectItem value="auto">Auto</SelectItem>
-                <SelectItem value="guided">Guided</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button
-              size="sm"
-              className="gap-2 ml-auto h-9"
-              onClick={() => navigate("/ingestions/new")}
-            >
-              <Upload className="size-4" />
-              Upload File
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-400">
-              {filteredDocuments.length} document{filteredDocuments.length !== 1 ? "s" : ""}
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                downloadCsv(
-                  "documents.csv",
-                  buildDocumentsCsv(filteredDocuments, {
-                    datasetNamesById,
-                    currentUser,
-                  }),
-                )
-              }
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-              disabled={filteredDocuments.length === 0}
-            >
-              <Download className="size-3.5" />
-              Export CSV
-            </button>
-          </div>
+          <DocumentsActionsBar
+            documentCount={filteredDocuments.length}
+            onExport={handleExport}
+          />
 
           {pageError && (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -345,182 +239,29 @@ export default function DocumentsPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/60">
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">File</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Dataset</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Mode</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Chunks</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Status</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 px-5 py-3">Uploaded</th>
-                  <th className="px-5 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-16 text-center">
-                      <div className="inline-flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="size-4 animate-spin" />
-                        Loading documents…
-                      </div>
-                    </td>
-                  </tr>
-                ) : filteredDocuments.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-16 text-center">
-                      <FileText className="size-8 text-gray-200 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-gray-500">No documents found</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Try adjusting your filters or upload a new file.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDocuments.map((document) => {
-                    const fileType = document.fileType.toUpperCase().replace(".", "");
-                    const typeStyle =
-                      FILE_TYPE_STYLES[fileType] ??
-                      { bg: "bg-gray-100", text: "text-gray-500", icon: fileType };
-                    const datasetId = getDocumentDatasetId(document);
-                    const datasetName = datasetId
-                      ? datasetNamesById.get(datasetId) ?? datasetId
-                      : "Unknown Dataset";
-
-                    return (
-                      <tr
-                        key={document.id}
-                        className="hover:bg-indigo-50/30 cursor-pointer transition-colors group"
-                        onClick={() => navigate(`/documents/${document.id}`)}
-                      >
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={cn(
-                                "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[9px] font-bold tracking-tight",
-                                typeStyle.bg,
-                                typeStyle.text,
-                              )}
-                            >
-                              {typeStyle.icon}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
-                                {document.filename}
-                              </p>
-                              <p className="text-xs text-gray-400">
-                                {document.fileType.toUpperCase()} · {formatFileSize(document.fileSize)}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <p className="text-xs font-medium text-gray-600 truncate max-w-40">
-                            {datasetName}
-                          </p>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <ModeBadge mode={getDocumentMode(document)} />
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <Layers className="size-3.5 text-gray-400" />
-                            <span className="text-sm font-medium text-gray-700">
-                              {getDocumentChunkCount(document).toLocaleString()}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <StatusBadge status={getDocumentStatusValue(document.processingStatus)} />
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="text-xs text-gray-400">
-                            <div>{getDocumentUploadedAtLabel(document)}</div>
-                            <div>{getDocumentUploaderLabel(document, currentUser)}</div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReingestDocument(document);
-                              }}
-                              disabled={reingestingIds.has(document.id)}
-                              className="p-1 rounded-md hover:bg-indigo-50 hover:text-indigo-600 text-gray-400 transition-all disabled:opacity-50"
-                              title="Re-ingest document"
-                            >
-                              {reingestingIds.has(document.id) ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
-                                <RefreshCw className="size-3.5" />
-                              )}
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteTarget(document);
-                              }}
-                              className="p-1 rounded-md hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all"
-                              title="Delete document"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </button>
-                            <ArrowUpRight className="size-3.5 text-indigo-500" />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DocumentsTable
+            documents={filteredDocuments}
+            isLoading={isLoading}
+            datasetNamesById={datasetNamesById}
+            currentUser={currentUser}
+            reingestingIds={reingestingIds}
+            onOpenPath={navigate}
+            onReingestDocument={(document) => void handleReingestDocument(document)}
+            onDeleteDocument={setDeleteTarget}
+          />
         </div>
       </main>
 
-      <Dialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null); }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
-                <Trash2 className="size-4 text-red-600" />
-              </div>
-              <div>
-                <DialogTitle className="text-base">Delete document</DialogTitle>
-                <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
-              </div>
-            </div>
-          </DialogHeader>
-          <p className="text-sm text-gray-600 py-1">
-            Are you sure you want to delete{" "}
-            <span className="font-semibold text-gray-900">"{deleteTarget?.filename}"</span>?
-            All chunks will be removed.
-          </p>
-          <DialogFooter className="gap-2 mt-2">
-            <button
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-              className="flex-1 h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDeleteDocument}
-              disabled={isDeleting}
-              className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              {isDeleting && <Loader2 className="size-4 animate-spin" />}
-              Delete
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteDocumentDialog
+        document={deleteTarget}
+        isDeleting={isDeleting}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDeleteTarget(null);
+          }
+        }}
+        onDelete={() => void handleDeleteDocument()}
+      />
     </div>
   );
 }

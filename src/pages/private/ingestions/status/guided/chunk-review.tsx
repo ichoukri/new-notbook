@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Layers, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  CheckSquare,
+  Layers,
+  Loader2,
+  MinusSquare,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ingestion/ui";
 import type {
@@ -44,6 +52,7 @@ export function ChunkReview({
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [pageFilter, setPageFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     onPendingChange?.(pendingOps.length);
@@ -177,6 +186,33 @@ export function ChunkReview({
       secondId,
     ]);
 
+  const toggleSelect = (serverId: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(serverId)) next.delete(serverId);
+      else next.add(serverId);
+      return next;
+    });
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const deleteSelected = (deletedServerIds: Set<string>) => {
+    if (busy || selectedIds.size === 0) return;
+    const willDelete = new Set([...deletedServerIds, ...selectedIds]);
+    if (willDelete.size >= chunks.length) {
+      toast.error("At least one chunk must remain.");
+      return;
+    }
+    const ids = [...selectedIds];
+    setPendingOps((prev) => [
+      ...prev.filter((op) => !ids.some((id) => opTouches(op, id))),
+      ...ids.map(
+        (id): TChunkEditOperation => ({ op: "delete", chunk_id: id }),
+      ),
+    ]);
+    clearSelection();
+  };
+
   const applyAll = () => {
     if (pendingOps.length === 0 || isSubmitting) return;
     resetModes();
@@ -237,6 +273,32 @@ export function ChunkReview({
         return true;
       })
     : previewChunks;
+
+  // Selection: only real, not-yet-deleted server chunks are selectable.
+  const selectableIds = visibleChunks
+    .filter((row) => row.serverId != null && row.status !== "deleted")
+    .map((row) => row.serverId as string);
+  const selectedVisibleCount = selectableIds.filter((id) =>
+    selectedIds.has(id),
+  ).length;
+  const allVisibleSelected =
+    selectableIds.length > 0 && selectedVisibleCount === selectableIds.length;
+  const deletedServerIds = new Set(
+    previewChunks
+      .filter((row) => row.status === "deleted" && row.serverId != null)
+      .map((row) => row.serverId as string),
+  );
+
+  const toggleSelectAll = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        selectableIds.forEach((id) => next.delete(id));
+      } else {
+        selectableIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
 
   return (
     <>
@@ -309,35 +371,83 @@ export function ChunkReview({
             No chunks match your filters.
           </p>
         ) : (
-          <div className="max-h-[600px] overflow-y-auto py-1">
-            {visibleChunks.map((row, index) => (
-              <ChunkReviewRow
-                key={row.key}
-                row={row}
-                next={visibleChunks[index + 1]}
-                busy={busy}
-                editorOpen={editorOpen}
-                filtersActive={filtersActive}
-                isEditing={row.serverId != null && editingId === row.serverId}
-                isSplitting={
-                  row.serverId != null && splittingId === row.serverId
-                }
-                editDraft={editDraft}
-                splitAfter={splitAfter}
-                onEditDraftChange={setEditDraft}
-                onStartEdit={startEdit}
-                onStartSplit={startSplit}
-                onDelete={deleteChunk}
-                onUndo={undoChunk}
-                onCancelMode={resetModes}
-                onSaveEdit={saveEdit}
-                onToggleSplitAt={toggleSplitAt}
-                onConfirmSplit={confirmSplit}
-                onMerge={mergeRows}
-                onPreviewImage={setPreviewImage}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/40 px-5 py-2 text-xs">
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                disabled={busy || selectableIds.length === 0}
+                className="flex items-center gap-1.5 font-medium text-gray-600 transition-colors hover:text-violet-700 disabled:opacity-40"
+              >
+                {allVisibleSelected ? (
+                  <CheckSquare className="size-4 text-violet-600" />
+                ) : selectedVisibleCount > 0 ? (
+                  <MinusSquare className="size-4 text-violet-600" />
+                ) : (
+                  <Square className="size-4 text-gray-400" />
+                )}
+                Select all
+              </button>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">
+                    {selectedIds.size} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteSelected(deletedServerIds)}
+                    disabled={busy}
+                    className="flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+                  >
+                    <Trash2 className="size-3.5" /> Delete {selectedIds.size}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="text-gray-400 transition-colors hover:text-gray-600"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="max-h-[600px] overflow-y-auto py-1">
+              {visibleChunks.map((row, index) => (
+                <ChunkReviewRow
+                  key={row.key}
+                  row={row}
+                  next={visibleChunks[index + 1]}
+                  busy={busy}
+                  editorOpen={editorOpen}
+                  filtersActive={filtersActive}
+                  isEditing={row.serverId != null && editingId === row.serverId}
+                  isSplitting={
+                    row.serverId != null && splittingId === row.serverId
+                  }
+                  editDraft={editDraft}
+                  splitAfter={splitAfter}
+                  onEditDraftChange={setEditDraft}
+                  onStartEdit={startEdit}
+                  onStartSplit={startSplit}
+                  onDelete={deleteChunk}
+                  onUndo={undoChunk}
+                  onCancelMode={resetModes}
+                  onSaveEdit={saveEdit}
+                  onToggleSplitAt={toggleSplitAt}
+                  onConfirmSplit={confirmSplit}
+                  onMerge={mergeRows}
+                  onPreviewImage={setPreviewImage}
+                  selectable={
+                    row.serverId != null && row.status !== "deleted"
+                  }
+                  isSelected={
+                    row.serverId != null && selectedIds.has(row.serverId)
+                  }
+                  onToggleSelect={toggleSelect}
+                />
+              ))}
+            </div>
+          </>
         )}
       </Panel>
 

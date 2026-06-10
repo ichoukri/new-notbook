@@ -57,6 +57,75 @@ export function getDocumentDatasetId(document: TIngestionDocument): string | nul
   return document.datasetIds[0] ?? null;
 }
 
+const DOCUMENT_ACTIVE_PIPELINE_STATUSES = new Set([
+  "pending",
+  "queued",
+  "partitioning",
+  "chunking",
+  "summarising",
+  "vectorization",
+]);
+
+const DOCUMENT_TERMINAL_PIPELINE_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+const DOCUMENT_REVIEW_STATUSES = new Set([
+  "partitioning_awaiting_approval",
+  "chunking_awaiting_approval",
+  "summarising_awaiting_approval",
+  "vectorization_awaiting_approval",
+  "metadata_awaiting_approval",
+]);
+
+export function isDocumentAwaitingReview(
+  document: TIngestionDocument,
+): boolean {
+  return DOCUMENT_REVIEW_STATUSES.has(document.processingStatus);
+}
+
+export function isDocumentInPipeline(document: TIngestionDocument): boolean {
+  return (
+    DOCUMENT_ACTIVE_PIPELINE_STATUSES.has(document.processingStatus) ||
+    isDocumentAwaitingReview(document)
+  );
+}
+
+export function isDocumentActivelyProcessing(
+  document: TIngestionDocument,
+): boolean {
+  return (
+    !DOCUMENT_TERMINAL_PIPELINE_STATUSES.has(document.processingStatus) &&
+    !isDocumentAwaitingReview(document)
+  );
+}
+
+export function getDocumentPipelineStatusPath(
+  document: TIngestionDocument,
+): string | null {
+  const datasetId = getDocumentDatasetId(document);
+  if (!datasetId || !isDocumentInPipeline(document)) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    document_id: document.id,
+    dataset_id: datasetId,
+  });
+  return `/ingestions/status?${params.toString()}`;
+}
+
+export function getDocumentDatasetName(
+  document: TIngestionDocument,
+  datasetNamesById: Map<string, string>,
+  fallback = "Unassigned dataset",
+): string {
+  const datasetId = getDocumentDatasetId(document);
+  return (datasetId && datasetNamesById.get(datasetId)) || datasetId || fallback;
+}
+
 export function getDocumentPageCount(
   document: TIngestionDocument,
   chunks: TIngestionChunk[] = [],
