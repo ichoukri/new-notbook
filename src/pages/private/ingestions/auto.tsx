@@ -74,6 +74,7 @@ import {
   RefreshCw,
   Save,
   Scissors,
+  Search,
   Shield,
   Sparkles,
   Tag,
@@ -1095,6 +1096,101 @@ function parsePartitionElements(value: unknown): PartitionElement[] {
     .filter((item): item is PartitionElement => item !== null);
 }
 
+// Shared search/type/page filter bar for the guided-mode review steps. Filter
+// state lives in the parent so the filtered list and the "N of M" count stay in
+// sync; this component is presentation only.
+function ReviewFilterBar({
+  search,
+  onSearch,
+  typeLabel,
+  typeValue,
+  onType,
+  typeOptions,
+  pageValue,
+  onPage,
+  pageOptions,
+  resultCount,
+  totalCount,
+}: {
+  search: string;
+  onSearch: (value: string) => void;
+  typeLabel: string;
+  typeValue: string;
+  onType: (value: string) => void;
+  typeOptions: string[];
+  pageValue: string;
+  onPage: (value: string) => void;
+  pageOptions: number[];
+  resultCount: number;
+  totalCount: number;
+}) {
+  const hasFilters =
+    search.trim() !== "" || typeValue !== "all" || pageValue !== "all";
+  const selectClass =
+    "rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-gray-50/50 px-5 py-2.5">
+      <div className="relative min-w-[180px] flex-1">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Search content…"
+          className="w-full rounded-lg border border-gray-200 py-1.5 pl-8 pr-3 text-sm text-gray-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+        />
+      </div>
+      {typeOptions.length > 0 && (
+        <select
+          value={typeValue}
+          onChange={(event) => onType(event.target.value)}
+          className={selectClass}
+          aria-label={`Filter by ${typeLabel}`}
+        >
+          <option value="all">All {typeLabel}</option>
+          {typeOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      )}
+      {pageOptions.length > 0 && (
+        <select
+          value={pageValue}
+          onChange={(event) => onPage(event.target.value)}
+          className={selectClass}
+          aria-label="Filter by page"
+        >
+          <option value="all">All pages</option>
+          {pageOptions.map((page) => (
+            <option key={page} value={String(page)}>
+              Page {page}
+            </option>
+          ))}
+        </select>
+      )}
+      {hasFilters && (
+        <button
+          type="button"
+          onClick={() => {
+            onSearch("");
+            onType("all");
+            onPage("all");
+          }}
+          className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-100"
+        >
+          <X className="size-3.5" /> Clear
+        </button>
+      )}
+      <span className="ml-auto text-xs tabular-nums text-gray-400">
+        {hasFilters ? `${resultCount} of ${totalCount}` : `${totalCount} total`}
+      </span>
+    </div>
+  );
+}
+
 function PartitionReview({
   output,
   onSaveRemovals,
@@ -1109,6 +1205,32 @@ function PartitionReview({
   const elements = parsePartitionElements(output?.elements);
   // Image clicked for full-size preview (null = lightbox closed).
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [pageFilter, setPageFilter] = useState("all");
+
+  const typeOptions = [...new Set(elements.map((element) => element.type))].sort();
+  const pageOptions = [
+    ...new Set(
+      elements
+        .map((element) => element.page)
+        .filter((page): page is number => page != null),
+    ),
+  ].sort((a, b) => a - b);
+
+  const query = search.trim().toLowerCase();
+  const filteredElements = elements.filter((element) => {
+    if (typeFilter !== "all" && element.type !== typeFilter) return false;
+    if (pageFilter !== "all" && String(element.page) !== pageFilter) return false;
+    if (
+      query &&
+      !element.preview.toLowerCase().includes(query) &&
+      !element.type.toLowerCase().includes(query)
+    ) {
+      return false;
+    }
+    return true;
+  });
   // Controlled by the persisted set: the row state reflects what's saved on the
   // document, so it stays correct across refetches and page revisits.
   const removed = new Set(
@@ -1204,9 +1326,28 @@ function PartitionReview({
                 )}
               </span>
             }
-            bodyClassName="max-h-[600px] divide-y divide-gray-100 overflow-y-auto"
+            bodyClassName=""
           >
-            {elements.map((element) => {
+            <ReviewFilterBar
+              search={search}
+              onSearch={setSearch}
+              typeLabel="types"
+              typeValue={typeFilter}
+              onType={setTypeFilter}
+              typeOptions={typeOptions}
+              pageValue={pageFilter}
+              onPage={setPageFilter}
+              pageOptions={pageOptions}
+              resultCount={filteredElements.length}
+              totalCount={elements.length}
+            />
+            {filteredElements.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-gray-400">
+                No elements match your filters.
+              </p>
+            ) : (
+              <div className="max-h-[600px] divide-y divide-gray-100 overflow-y-auto">
+                {filteredElements.map((element) => {
               const isRemoved = removed.has(element.index);
               return (
                 <div
@@ -1315,7 +1456,9 @@ function PartitionReview({
                   </button>
                 </div>
               );
-            })}
+                })}
+              </div>
+            )}
           </Panel>
         )}
       </MotionItem>
@@ -1525,6 +1668,9 @@ function ChunkReview({
   const [splittingId, setSplittingId] = useState<string | null>(null);
   // Block indices *after* which to cut the chunk being split.
   const [splitAfter, setSplitAfter] = useState<Set<number>>(new Set());
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [pageFilter, setPageFilter] = useState("all");
 
   // Tell the parent how many changes are staged so it can block Approve.
   useEffect(() => {
@@ -1651,6 +1797,34 @@ function ChunkReview({
   const hasPending = pendingOps.length > 0;
   const editorOpen = editingId !== null || splittingId !== null;
 
+  const typeOptions = [
+    ...new Set(previewChunks.flatMap((row) => row.contentTypes)),
+  ].sort();
+  const pageOptions = [
+    ...new Set(
+      previewChunks
+        .map((row) => row.pageNumber)
+        .filter((page): page is number => page != null),
+    ),
+  ].sort((a, b) => a - b);
+
+  const query = search.trim().toLowerCase();
+  const filtersActive =
+    query !== "" || typeFilter !== "all" || pageFilter !== "all";
+  // Filtering is display-only; merge connectors are hidden while a filter is
+  // active because adjacency in a filtered view no longer matches the real
+  // chunk order the backend's merge requires.
+  const visibleChunks = filtersActive
+    ? previewChunks.filter((row) => {
+        if (typeFilter !== "all" && !row.contentTypes.includes(typeFilter))
+          return false;
+        if (pageFilter !== "all" && String(row.pageNumber) !== pageFilter)
+          return false;
+        if (query && !row.content.toLowerCase().includes(query)) return false;
+        return true;
+      })
+    : previewChunks;
+
   return (
     <>
       <Panel
@@ -1703,9 +1877,28 @@ function ChunkReview({
           )}
         </div>
 
+        <ReviewFilterBar
+          search={search}
+          onSearch={setSearch}
+          typeLabel="content"
+          typeValue={typeFilter}
+          onType={setTypeFilter}
+          typeOptions={typeOptions}
+          pageValue={pageFilter}
+          onPage={setPageFilter}
+          pageOptions={pageOptions}
+          resultCount={visibleChunks.length}
+          totalCount={previewChunks.length}
+        />
+
+        {visibleChunks.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-gray-400">
+            No chunks match your filters.
+          </p>
+        ) : (
         <div className="max-h-[600px] overflow-y-auto py-1">
-          {previewChunks.map((row, index) => {
-            const next = previewChunks[index + 1];
+          {visibleChunks.map((row, index) => {
+            const next = visibleChunks[index + 1];
             const isEditing =
               row.serverId != null && editingId === row.serverId;
             const isSplitting =
@@ -1722,6 +1915,7 @@ function ChunkReview({
             // server chunks (anything already staged can't be merged again).
             const mergeableHere =
               !editorOpen &&
+              !filtersActive &&
               row.status === "unchanged" &&
               row.serverId != null &&
               next?.status === "unchanged" &&
@@ -1992,6 +2186,7 @@ function ChunkReview({
             );
           })}
         </div>
+        )}
       </Panel>
 
       <Dialog
