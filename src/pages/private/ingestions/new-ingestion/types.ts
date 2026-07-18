@@ -12,6 +12,7 @@ export type UploadStatus =
 export type UploadItem = {
   id: string;
   file: File;
+  relativePath: string | null;
   status: UploadStatus;
   error?: string;
   documentId?: string;

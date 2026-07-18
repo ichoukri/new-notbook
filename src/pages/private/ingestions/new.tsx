@@ -28,7 +28,9 @@ import { StartIngestionButton } from "./new-ingestion/start-ingestion-button";
 import type { IngestionMode, UploadItem } from "./new-ingestion/types";
 import {
   UPLOAD_CONCURRENCY,
+  buildUploadFileMetadata,
   collectAcceptedFiles,
+  getFileRelativePath,
   makeItemId,
 } from "./new-ingestion/upload-files";
 
@@ -95,8 +97,12 @@ export default function NewIngestionPage() {
   // against what's already chosen, and surface a one-line summary.
   const addFiles = (incoming: File[]) => {
     if (incoming.length === 0) return;
-    const { accepted, skippedUnsupported, skippedOversize } =
-      collectAcceptedFiles(incoming);
+    const {
+      accepted,
+      skippedMacOSSidecars,
+      skippedUnsupported,
+      skippedOversize,
+    } = collectAcceptedFiles(incoming);
 
     // Dedupe purely against the current selection — never inside the state
     // updater (React invokes updaters twice in StrictMode, which would
@@ -111,7 +117,12 @@ export default function NewIngestionPage() {
         continue;
       }
       existingIds.add(id);
-      fresh.push({ id, file, status: "pending" });
+      fresh.push({
+        id,
+        file,
+        relativePath: getFileRelativePath(file),
+        status: "pending",
+      });
     }
 
     if (fresh.length > 0) {
@@ -125,8 +136,14 @@ export default function NewIngestionPage() {
     }
 
     const skipped: string[] = [];
+    if (skippedMacOSSidecars > 0)
+      skipped.push(
+        `${skippedMacOSSidecars} macOS sidecar${skippedMacOSSidecars === 1 ? "" : "s"}`,
+      );
     if (skippedUnsupported > 0)
-      skipped.push(`${skippedUnsupported} unsupported`);
+      skipped.push(
+        `${skippedUnsupported} unsupported file${skippedUnsupported === 1 ? "" : "s"}`,
+      );
     if (skippedOversize > 0)
       skipped.push(`${skippedOversize} over ${env.VITE_MAX_UPLOAD_MB} MB`);
     if (duplicates > 0) skipped.push(`${duplicates} already added`);
@@ -156,15 +173,15 @@ export default function NewIngestionPage() {
   // item so one bad file doesn't abort the batch.
   const uploadOne = async (item: UploadItem): Promise<UploadItem> => {
     const { file } = item;
+    const uploadMetadata = buildUploadFileMetadata(file, item.relativePath);
     try {
       const prepareResponse = await backendApi.create<
         TBackendPrepareUploadResponse,
         TBackendPrepareUploadRequest
-      >(`/documents/${selectedDataset}/prepare-upload`, {
-        filename: file.name,
-        file_size: file.size,
-        content_type: file.type || null,
-      });
+      >(
+        `/documents/${selectedDataset}/prepare-upload`,
+        uploadMetadata,
+      );
 
       await axios.put(prepareResponse.upload_url, file, {
         headers: {
@@ -185,10 +202,8 @@ export default function NewIngestionPage() {
       >(`/documents/${selectedDataset}/finalize`, {
         document_id: prepareResponse.document_id,
         object_key: prepareResponse.object_key,
-        filename: file.name,
-        file_size: file.size,
+        ...uploadMetadata,
         sha256,
-        content_type: file.type || null,
         mode,
       });
 
@@ -434,4 +449,3 @@ export default function NewIngestionPage() {
     </div>
   );
 }
-

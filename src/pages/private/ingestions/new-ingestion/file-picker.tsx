@@ -36,6 +36,7 @@ const FILE_TYPES = [
   "HTML",
   "PPTX",
   "XLSX",
+  "Images",
 ];
 
 const EXT_ICON: Record<string, { icon: IconComponent; color: string }> = {
@@ -50,6 +51,13 @@ const EXT_ICON: Record<string, { icon: IconComponent; color: string }> = {
   md: { icon: FileCode, color: "text-gray-600 bg-gray-100" },
   txt: { icon: FileText, color: "text-gray-600 bg-gray-100" },
   html: { icon: FileCode, color: "text-orange-600 bg-orange-50" },
+  png: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  jpg: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  jpeg: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  tif: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  tiff: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  bmp: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
+  webp: { icon: FileImage, color: "text-teal-600 bg-teal-50" },
   mp4: { icon: Video, color: "text-pink-600 bg-pink-50" },
   mp3: { icon: Music, color: "text-violet-600 bg-violet-50" },
 };
@@ -319,7 +327,7 @@ function SelectedFilesPanel({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-800">
-                  {item.file.webkitRelativePath || item.file.name}
+                  {item.relativePath || item.file.name}
                 </p>
                 <p className="text-[11px] text-gray-400">
                   {formatFileSize(item.file.size)}

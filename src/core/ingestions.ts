@@ -52,6 +52,7 @@ export type TBackendDocumentMutationResponse = {
 
 export type TBackendPrepareUploadRequest = {
   filename: string;
+  source_relative_path: string | null;
   file_size: number;
   content_type: string | null;
 };
@@ -70,6 +71,7 @@ export type TBackendFinalizeRequest = {
   document_id: string;
   object_key: string;
   filename: string;
+  source_relative_path: string | null;
   file_size: number;
   sha256: string;
   content_type: string | null;
