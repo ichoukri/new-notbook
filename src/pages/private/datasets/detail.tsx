@@ -39,7 +39,10 @@ const DOCUMENT_STATUS_STYLES: Record<string, string> = {
   partitioning: "bg-amber-50 text-amber-700 border-amber-200",
   chunking: "bg-violet-50 text-violet-700 border-violet-200",
   summarising: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  graph_extraction: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   vectorization: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  graph_extraction_awaiting_approval:
+    "bg-violet-50 text-violet-700 border-violet-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   failed: "bg-red-50 text-red-700 border-red-200",
 };

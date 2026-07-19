@@ -56,6 +56,7 @@ const STATUS_FILTERS = [
   { value: "partitioning", label: "Extracting" },
   { value: "chunking", label: "Chunking" },
   { value: "summarising", label: "Summarising" },
+  { value: "graph_extraction", label: "Knowledge Graph" },
   { value: "vectorization", label: "Embedding" },
   { value: "awaiting", label: "Awaiting Review" },
   { value: "completed", label: "Completed" },

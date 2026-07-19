@@ -1,4 +1,13 @@
-import { Database, Download, FileText, Layers, Loader2, Sparkles, Terminal } from "lucide-react";
+import {
+  Database,
+  Download,
+  FileText,
+  Layers,
+  Loader2,
+  Network,
+  Sparkles,
+  Terminal,
+} from "lucide-react";
 import {
   Hero,
   IngestionShell,
@@ -137,6 +146,19 @@ export function PipelineStatusView({
               }
             />
             <StatCard
+              icon={Network}
+              tone="violet"
+              label="Graph candidates"
+              hint="Entities / relationships"
+              value={
+                metrics.graphEntities !== null ||
+                metrics.graphRelations !== null
+                  ? `${metrics.graphEntities ?? 0} / ${metrics.graphRelations ?? 0}`
+                  : "—"
+              }
+              active={currentStep?.key === "graph"}
+            />
+            <StatCard
               icon={Database}
               tone="emerald"
               label="Vectors indexed"
@@ -237,6 +259,21 @@ export function PipelineStatusView({
                   value={metrics.totalChunks?.toLocaleString() ?? "Pending"}
                   color="text-violet-400"
                 />
+                {(metrics.graphEntities !== null ||
+                  metrics.graphRelations !== null ||
+                  document.processingStatus.startsWith("graph_extraction")) && (
+                  <SummaryRow
+                    icon={Network}
+                    label="Knowledge graph"
+                    value={
+                      metrics.graphEntities !== null ||
+                      metrics.graphRelations !== null
+                        ? `${metrics.graphEntities ?? 0} entities · ${metrics.graphRelations ?? 0} relations`
+                        : "Processing"
+                    }
+                    color="text-fuchsia-500"
+                  />
+                )}
                 <SummaryRow
                   icon={Sparkles}
                   label="Embedding model"

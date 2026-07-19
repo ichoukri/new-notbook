@@ -108,6 +108,7 @@ export type TIngestionStepKey =
   | "normalize"
   | "chunking"
   | "embed_text"
+  | "graph"
   | "metadata"
   | "embedding"
   | "index";
@@ -206,8 +207,9 @@ export const INGESTION_PIPELINE_STEPS: Array<{
   { key: "normalize", label: "Normalize" },
   { key: "chunking", label: "Chunking" },
   { key: "embed_text", label: "Embed Text" },
-  { key: "metadata", label: "Metadata" },
+  { key: "graph", label: "Knowledge Graph" },
   { key: "embedding", label: "Embedding" },
+  { key: "metadata", label: "Metadata" },
   { key: "index", label: "Index" },
 ];
 
@@ -267,6 +269,9 @@ function getCurrentPipelineStep(
     case "summarising":
     case "summarising_awaiting_approval":
       return "embed_text";
+    case "graph_extraction":
+    case "graph_extraction_awaiting_approval":
+      return "graph";
     case "vectorization":
     case "vectorization_awaiting_approval":
       return "embedding";
@@ -363,7 +368,14 @@ export function getIngestionPipeline(
       .filter(Boolean) as TIngestionPipelineStep[];
 
     if (parsedSteps.length === INGESTION_PIPELINE_STEPS.length) {
-      return parsedSteps;
+      const byKey = new Map(parsedSteps.map((step) => [step.key, step]));
+      if (byKey.size === INGESTION_PIPELINE_STEPS.length) {
+        // Keep the customer-facing stage order stable even while backend
+        // deployments roll out the new graph step in their pipeline payload.
+        return INGESTION_PIPELINE_STEPS.map(
+          (definition) => byKey.get(definition.key)!,
+        );
+      }
     }
   }
 
@@ -447,6 +459,8 @@ export function getIngestionMetrics(document: TIngestionDocument): {
   processedChunks: number | null;
   storedChunks: number | null;
   vectorizedChunks: number | null;
+  graphEntities: number | null;
+  graphRelations: number | null;
   chunkVersion: number | null;
   embeddingModel: string | null;
   summaryModel: string | null;
@@ -456,10 +470,12 @@ export function getIngestionMetrics(document: TIngestionDocument): {
   const partitioning = getRecord(details?.partitioning);
   const chunking = getRecord(details?.chunking);
   const summarising = getRecord(details?.summarising);
+  const graphExtraction = getRecord(details?.graph_extraction);
   const vectorization = getRecord(details?.vectorization);
   const runtime = getRecord(details?.runtime);
 
   const elementsFound = getRecord(partitioning?.elements_found);
+  const graphCounts = getRecord(graphExtraction?.counts);
   const elementsDetected = elementsFound
     ? Object.values(elementsFound).reduce<number>((sum, item) => {
         const value = getNumber(item);
@@ -476,6 +492,8 @@ export function getIngestionMetrics(document: TIngestionDocument): {
     processedChunks: getNumber(summarising?.current_chunk),
     storedChunks: getNumber(summarising?.stored_chunks),
     vectorizedChunks: getNumber(vectorization?.vectorized_chunks),
+    graphEntities: getNumber(graphCounts?.entity_candidates),
+    graphRelations: getNumber(graphCounts?.relation_candidates),
     chunkVersion:
       getNumber(vectorization?.chunk_version) ??
       getNumber(summarising?.chunk_version),
@@ -511,6 +529,7 @@ const _AWAITING_APPROVAL_STAGE_MAP: Record<string, string> = {
   partitioning_awaiting_approval: "partition",
   chunking_awaiting_approval: "chunking",
   summarising_awaiting_approval: "summarising",
+  graph_extraction_awaiting_approval: "graph",
   vectorization_awaiting_approval: "vectorization",
 };
 
@@ -630,6 +649,8 @@ export function getDocumentStatusLabel(status: string): string {
       return "Chunking";
     case "summarising":
       return "Summarising";
+    case "graph_extraction":
+      return "Extracting knowledge graph";
     case "vectorization":
       return "Vectorizing";
     case "partitioning_awaiting_approval":
@@ -638,6 +659,8 @@ export function getDocumentStatusLabel(status: string): string {
       return "Awaiting review (chunks)";
     case "summarising_awaiting_approval":
       return "Awaiting review (summaries)";
+    case "graph_extraction_awaiting_approval":
+      return "Awaiting review (knowledge graph)";
     case "vectorization_awaiting_approval":
       return "Awaiting review (vectors)";
     case "metadata_awaiting_approval":

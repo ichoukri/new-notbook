@@ -63,6 +63,7 @@ const DOCUMENT_ACTIVE_PIPELINE_STATUSES = new Set([
   "partitioning",
   "chunking",
   "summarising",
+  "graph_extraction",
   "vectorization",
 ]);
 
@@ -76,6 +77,7 @@ const DOCUMENT_REVIEW_STATUSES = new Set([
   "partitioning_awaiting_approval",
   "chunking_awaiting_approval",
   "summarising_awaiting_approval",
+  "graph_extraction_awaiting_approval",
   "vectorization_awaiting_approval",
   "metadata_awaiting_approval",
 ]);

@@ -398,7 +398,7 @@ export default function NewIngestionPage() {
                 icon={ClipboardList}
                 badge="Backend Ready"
                 title="Guided Mode"
-                description="Review and approve each stage: extract, chunk, summarize, embed, index."
+                description="Review each stage: extract, chunk, summarize, approve the knowledge graph, embed, and publish."
                 time="~5–10 min"
               />
             </div>

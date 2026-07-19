@@ -14,7 +14,9 @@ import {
   isDocumentInPipeline,
 } from "@/core/documents";
 import {
+  getAwaitingApprovalStage,
   getDocumentStatusLabel,
+  getIngestionPipeline,
   mapBackendDocument,
   shouldLoadIngestionChunks,
   type TBackendDocument,
@@ -122,6 +124,12 @@ describe("formatting helpers", () => {
     expect(getDocumentStatusLabel("metadata_awaiting_approval")).toBe(
       "Awaiting review (metadata)",
     );
+    expect(getDocumentStatusLabel("graph_extraction")).toBe(
+      "Extracting knowledge graph",
+    );
+    expect(getDocumentStatusLabel("graph_extraction_awaiting_approval")).toBe(
+      "Awaiting review (knowledge graph)",
+    );
   });
 
   it("formats file sizes using readable units", () => {
@@ -156,6 +164,35 @@ describe("document pipeline navigation helpers", () => {
     expect(isDocumentActivelyProcessing(document)).toBe(false);
     expect(isDocumentAwaitingReview(document)).toBe(true);
     expect(getDocumentPipelineStatusPath(document)).toBe(
+      "/ingestions/status?document_id=doc-1&dataset_id=dataset-1",
+    );
+  });
+
+  it("routes graph extraction and review through the guided pipeline", () => {
+    const active = mapBackendDocument({
+      ...backendDocument,
+      processing_status: "graph_extraction",
+    });
+    const review = mapBackendDocument({
+      ...backendDocument,
+      processing_status: "graph_extraction_awaiting_approval",
+    });
+
+    expect(isDocumentActivelyProcessing(active)).toBe(true);
+    expect(isDocumentAwaitingReview(review)).toBe(true);
+    expect(getAwaitingApprovalStage(review)).toBe("graph");
+    const pipeline = getIngestionPipeline(review);
+    expect(pipeline.find((step) => step.status === "active")).toMatchObject({
+      key: "graph",
+      label: "Knowledge Graph",
+    });
+    expect(pipeline.map((step) => step.key).slice(4, 8)).toEqual([
+      "embed_text",
+      "graph",
+      "embedding",
+      "metadata",
+    ]);
+    expect(getDocumentPipelineStatusPath(review)).toBe(
       "/ingestions/status?document_id=doc-1&dataset_id=dataset-1",
     );
   });
@@ -210,6 +247,7 @@ describe("ingestion status helpers", () => {
     for (const status of [
       "queued",
       "partitioning",
+      "graph_extraction_awaiting_approval",
       "metadata_awaiting_approval",
     ]) {
       expect(
