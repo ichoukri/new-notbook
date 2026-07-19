@@ -10,6 +10,7 @@ import {
   FileText,
   Zap,
   Search,
+  Network,
   Cpu,
   Box,
   Activity,
@@ -33,6 +34,7 @@ const NAV_GROUPS = [
     label: "Explore",
     items: [
       { label: "Retrieval Test", icon: Search, path: "/retrieval" },
+      { label: "Knowledge Graph", icon: Network, path: "/graph" },
       { label: "Chunk Explorer", icon: Box, path: "/chunks" },
       { label: "Activity", icon: Activity, path: "/activity" },
     ],
