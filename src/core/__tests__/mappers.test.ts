@@ -29,6 +29,11 @@ const backendDocument: TBackendDocument = {
   file_size: 2048,
   file_type: "pdf",
   source_url: null,
+  source_relative_path: "Grinding/policy.pdf",
+  source_relative_paths: [
+    "Grinding/policy.pdf",
+    "Archive/policy.pdf",
+  ],
   user_id: "user-1",
   tanent_id: "tenant-1",
   created_at: "2026-01-01T10:00:00.000Z",
@@ -68,6 +73,11 @@ const backendDataset: TBackendDataset = {
       file_size: 2048,
       file_type: "pdf",
       source_url: null,
+      source_relative_path: "Grinding/policy.pdf",
+      source_relative_paths: [
+        "Grinding/policy.pdf",
+        "Archive/policy.pdf",
+      ],
       user_id: "user-1",
       tanent_id: "tenant-1",
       created_at: "2026-01-01T10:00:00.000Z",
@@ -92,6 +102,10 @@ describe("backend mappers", () => {
       mode: "auto",
       processingStatus: "vectorization",
       datasetIds: ["dataset-1"],
+      sourceRelativePaths: [
+        "Grinding/policy.pdf",
+        "Archive/policy.pdf",
+      ],
     });
     expect(getDocumentChunkCount(document)).toBe(12);
   });
@@ -112,7 +126,21 @@ describe("backend mappers", () => {
       filename: "policy.pdf",
       fileSize: 2048,
       processingStatus: "completed",
+      sourceRelativePaths: [
+        "Grinding/policy.pdf",
+        "Archive/policy.pdf",
+      ],
     });
+  });
+
+  it("maps the singular source path when the plural field is absent", () => {
+    const document = mapBackendDocument({
+      ...backendDocument,
+      source_relative_paths: undefined,
+      source_relative_path: "Legacy/policy.pdf",
+    });
+
+    expect(document.sourceRelativePaths).toEqual(["Legacy/policy.pdf"]);
   });
 });
 

@@ -1,3 +1,5 @@
+import { mapSourceRelativePaths } from "@/core/source-provenance";
+
 export type TRetrievalSearchMode =
   | "semantic"
   | "hybrid"
@@ -92,6 +94,8 @@ export type TBackendRetrievalSearchHit = {
   vector_store?: string | null;
   chunk_metadata?: Record<string, unknown> | null;
   source_url?: string | null;
+  source_relative_path?: string | null;
+  source_relative_paths?: string[] | null;
 };
 
 export type TRetrievalSearchHit = {
@@ -114,6 +118,7 @@ export type TRetrievalSearchHit = {
   vectorStore?: string | null;
   chunkMetadata?: Record<string, unknown> | null;
   sourceUrl?: string | null;
+  sourceRelativePaths: string[];
 };
 
 export type TBackendGroundedCitation = {
@@ -124,6 +129,8 @@ export type TBackendGroundedCitation = {
   page_number?: number | null;
   excerpt: string;
   source_url?: string | null;
+  source_relative_path?: string | null;
+  source_relative_paths?: string[] | null;
 };
 
 export type TGroundedCitation = {
@@ -134,6 +141,7 @@ export type TGroundedCitation = {
   pageNumber?: number | null;
   excerpt: string;
   sourceUrl?: string | null;
+  sourceRelativePaths: string[];
 };
 
 export type TRetrievalAbstentionReason =
@@ -207,6 +215,10 @@ export function mapBackendRetrievalSearchHit(
     vectorStore: hit.vector_store ?? null,
     chunkMetadata: hit.chunk_metadata ?? null,
     sourceUrl: hit.source_url ?? null,
+    sourceRelativePaths: mapSourceRelativePaths(
+      hit.source_relative_paths,
+      hit.source_relative_path,
+    ),
   };
 }
 
@@ -325,6 +337,10 @@ export function mapBackendGroundedAnswerResponse(
       pageNumber: citation.page_number ?? null,
       excerpt: citation.excerpt,
       sourceUrl: citation.source_url ?? null,
+      sourceRelativePaths: mapSourceRelativePaths(
+        citation.source_relative_paths,
+        citation.source_relative_path,
+      ),
     })),
     hits: response.hits.map(mapBackendRetrievalSearchHit),
     retrievalDebug: response.retrieval_debug

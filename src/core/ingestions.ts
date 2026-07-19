@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { mapSourceRelativePaths } from "@/core/source-provenance";
 
 export type TDocumentMode = "auto" | "guided";
 
@@ -9,6 +10,8 @@ export type TBackendDocument = {
   file_size: number;
   file_type: string;
   source_url?: string | null;
+  source_relative_path?: string | null;
+  source_relative_paths?: string[] | null;
   user_id: string;
   tanent_id: string;
   created_at: string;
@@ -162,6 +165,7 @@ export type TIngestionDocument = {
   fileSize: number;
   fileType: string;
   sourceUrl?: string | null;
+  sourceRelativePaths: string[];
   userId: string;
   tenantId: string;
   createdAt: string;
@@ -299,6 +303,10 @@ export function mapBackendDocument(document: TBackendDocument): TIngestionDocume
     fileSize: document.file_size,
     fileType: document.file_type,
     sourceUrl: document.source_url ?? null,
+    sourceRelativePaths: mapSourceRelativePaths(
+      document.source_relative_paths,
+      document.source_relative_path,
+    ),
     userId: document.user_id,
     tenantId: document.tanent_id,
     createdAt: document.created_at,

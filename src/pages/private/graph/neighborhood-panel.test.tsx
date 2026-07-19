@@ -52,7 +52,10 @@ const neighborhood: TGraphNeighborhood = {
       id: "citation-1",
       documentId: "doc-1",
       documentName: "Grinding Manual.pdf",
-      sourceRelativePath: "1-Grinding 1/Grinding Manual.pdf",
+      sourceRelativePaths: [
+        "1-Grinding 1/Grinding Manual.pdf",
+        "1-Grinding 1/Archive/Grinding Manual.pdf",
+      ],
       chunkId: "chunk-4",
       chunkIndex: 4,
       pageNumber: 12,
@@ -89,6 +92,12 @@ describe("NeighborhoodPanel", () => {
     expect(screen.getByText("Part Of")).toBeInTheDocument();
     expect(screen.getByText("Bearing 1 is part of Mill 1.")).toBeInTheDocument();
     expect(screen.getByText("Page 12")).toBeInTheDocument();
+    expect(
+      screen.getByText("1-Grinding 1/Grinding Manual.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("+1 alternate source location"),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open Grinding Manual.pdf" }),

@@ -7,6 +7,7 @@ import {
 import type { TIngestionDocument } from "@/core/ingestions";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./copy-control";
+import { DocumentSourceLocations } from "./document-source-locations";
 
 type DocumentMetrics = {
   embeddingModel?: string | null;
@@ -28,6 +29,12 @@ export function DocumentMetadataTab({
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <div className="rounded-xl border border-gray-100 overflow-hidden">
+        <div className="group flex items-start gap-4 bg-gray-50/50 px-4 py-2.5">
+          <span className="w-40 shrink-0 font-mono text-xs text-indigo-600">
+            source_locations
+          </span>
+          <DocumentSourceLocations paths={document.sourceRelativePaths} />
+        </div>
         {[
           { key: "document_id", value: document.id, copy: true },
           { key: "dataset_id", value: getDocumentDatasetId(document) ?? "—", copy: true },
@@ -52,7 +59,7 @@ export function DocumentMetadataTab({
             key={field.key}
             className={cn(
               "group flex items-center gap-4 px-4 py-2.5",
-              index % 2 === 0 ? "bg-gray-50/50" : "bg-white",
+              index % 2 === 0 ? "bg-white" : "bg-gray-50/50",
             )}
           >
             <span className="text-xs font-mono text-indigo-600 w-40 shrink-0">

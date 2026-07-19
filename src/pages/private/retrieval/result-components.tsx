@@ -1,5 +1,6 @@
 import { ArrowUpRight, ChevronRight, Code2, FileText, Tag, X } from "lucide-react";
 import { ContentTypeBadge } from "@/components/app/status-badge";
+import { SourceLocationSummary } from "@/components/app/source-location-summary";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   getRetrievalLanguage,
@@ -154,11 +155,17 @@ export function ResultCard({
         </p>
 
         <div className="flex items-center gap-3 mt-3 pl-9 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <FileText className="size-3" />
-            <span>{result.documentFilename}</span>
-            <span>·</span>
-            <span>{datasetLabel}</span>
+          <div className="min-w-0 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <FileText className="size-3" />
+              <span>{result.documentFilename}</span>
+              <span>·</span>
+              <span>{datasetLabel}</span>
+            </div>
+            <SourceLocationSummary
+              paths={result.sourceRelativePaths}
+              className="mt-1.5 max-w-md"
+            />
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {getRetrievalTags(result, { datasetNamesById }).map((tag) => (
@@ -228,6 +235,10 @@ export function PreviewPanel({
             {result.documentFilename}
             <ArrowUpRight className="size-3" />
           </button>
+          <SourceLocationSummary
+            paths={result.sourceRelativePaths}
+            className="mt-1 max-w-md"
+          />
         </div>
         <button
           type="button"
@@ -343,6 +354,10 @@ export function PreviewPanel({
                 { k: "score", v: result.score.toFixed(6) },
                 { k: "vector_store", v: result.vectorStore ?? "—" },
                 { k: "source_url", v: result.sourceUrl ?? "—" },
+                {
+                  k: "source_locations",
+                  v: result.sourceRelativePaths.join(", ") || "—",
+                },
               ].map((field, index) => (
                 <div
                   key={field.k}

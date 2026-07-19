@@ -10,6 +10,7 @@ import {
   Quote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SourceLocationSummary } from "@/components/app/source-location-summary";
 import {
   formatGraphLabel,
   type TGraphCitation,
@@ -52,9 +53,10 @@ function CitationCard({
           <p className="truncate text-xs font-semibold text-gray-800">
             {citation.documentName}
           </p>
-          <p className="mt-0.5 truncate text-[10px] text-gray-400">
-            {citation.sourceRelativePath ?? citation.documentName}
-          </p>
+          <SourceLocationSummary
+            paths={citation.sourceRelativePaths}
+            className="mt-1"
+          />
         </div>
         <Button
           type="button"

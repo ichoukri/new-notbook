@@ -63,6 +63,10 @@ describe("knowledge graph mappers", () => {
           document_id: "doc-1",
           document_name: "manual.pdf",
           source_relative_path: "Grinding/manual.pdf",
+          source_relative_paths: [
+            "Grinding/manual.pdf",
+            "Archive/manual.pdf",
+          ],
           chunk_id: "chunk-1",
           chunk_index: 4,
           page_number: 12,
@@ -85,7 +89,10 @@ describe("knowledge graph mappers", () => {
     expect(result.citations[0]).toMatchObject({
       documentId: "doc-1",
       pageNumber: 12,
-      sourceRelativePath: "Grinding/manual.pdf",
+      sourceRelativePaths: [
+        "Grinding/manual.pdf",
+        "Archive/manual.pdf",
+      ],
     });
   });
 });

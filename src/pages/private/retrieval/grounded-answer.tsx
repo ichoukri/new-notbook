@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FileText,
 } from "lucide-react";
+import { SourceLocationSummary } from "@/components/app/source-location-summary";
 import type {
   TGroundedAnswerResponse,
 } from "@/core/retrieval";
@@ -90,6 +91,10 @@ export function GroundedAnswerCard({
                         </span>
                       </span>
                     </button>
+                    <SourceLocationSummary
+                      paths={citation.sourceRelativePaths}
+                      className="mt-2"
+                    />
                     <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
                       {citation.excerpt}
                     </p>

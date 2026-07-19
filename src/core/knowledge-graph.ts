@@ -1,3 +1,5 @@
+import { mapSourceRelativePaths } from "@/core/source-provenance";
+
 export const GRAPH_ENTITY_TYPES = [
   "Equipment",
   "Component",
@@ -77,6 +79,7 @@ export type TBackendGraphCitation = {
   document_id: string;
   document_name: string;
   source_relative_path?: string | null;
+  source_relative_paths?: string[] | null;
   chunk_id: string;
   chunk_index: number;
   page_number?: number | null;
@@ -88,7 +91,7 @@ export type TGraphCitation = {
   id: string;
   documentId: string;
   documentName: string;
-  sourceRelativePath: string | null;
+  sourceRelativePaths: string[];
   chunkId: string;
   chunkIndex: number;
   pageNumber: number | null;
@@ -182,7 +185,10 @@ export function mapBackendGraphNeighborhood(
       id: citation.id,
       documentId: citation.document_id,
       documentName: citation.document_name,
-      sourceRelativePath: citation.source_relative_path ?? null,
+      sourceRelativePaths: mapSourceRelativePaths(
+        citation.source_relative_paths,
+        citation.source_relative_path,
+      ),
       chunkId: citation.chunk_id,
       chunkIndex: citation.chunk_index,
       pageNumber:

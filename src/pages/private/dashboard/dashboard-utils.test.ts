@@ -33,6 +33,7 @@ const document = (
   fileSize: 100,
   fileType: "pdf",
   sourceUrl: null,
+  sourceRelativePaths: [],
   userId: "user-1",
   tenantId: "tenant-1",
   createdAt: "2026-01-01T00:00:00.000Z",

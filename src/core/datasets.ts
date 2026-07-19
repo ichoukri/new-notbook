@@ -1,3 +1,5 @@
+import { mapSourceRelativePaths } from "@/core/source-provenance";
+
 export type TBackendDatasetStatus = "active" | "archived";
 
 export type TBackendDatasetDocument = {
@@ -7,6 +9,8 @@ export type TBackendDatasetDocument = {
   file_size: number;
   file_type: string;
   source_url?: string | null;
+  source_relative_path?: string | null;
+  source_relative_paths?: string[] | null;
   user_id: string;
   tanent_id: string;
   created_at: string;
@@ -37,6 +41,7 @@ export type TDatasetDocument = {
   fileSize: number;
   fileType: string;
   sourceUrl?: string | null;
+  sourceRelativePaths: string[];
   createdAt: string;
   updatedAt: string;
   processingStatus: string;
@@ -75,6 +80,10 @@ export function mapBackendDatasetDocument(
     fileSize: document.file_size,
     fileType: document.file_type,
     sourceUrl: document.source_url ?? null,
+    sourceRelativePaths: mapSourceRelativePaths(
+      document.source_relative_paths,
+      document.source_relative_path,
+    ),
     createdAt: document.created_at,
     updatedAt: document.updated_at,
     processingStatus: document.processing_status,

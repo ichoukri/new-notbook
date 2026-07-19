@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mapBackendGroundedAnswerResponse,
+  mapBackendRetrievalSearchHit,
   mapBackendRetrievalSearchDebug,
   type TBackendGroundedAnswerResponse,
 } from "@/core/retrieval";
@@ -70,6 +71,11 @@ describe("graph retrieval mappers", () => {
           page_number: 12,
           excerpt: "Apply lubricant at the designated point.",
           source_url: null,
+          source_relative_path: "1-Grinding 1/Manuals/manual.pdf",
+          source_relative_paths: [
+            "1-Grinding 1/Manuals/manual.pdf",
+            "1-Grinding 1/Archive/manual.pdf",
+          ],
         },
       ],
       hits: [
@@ -87,6 +93,11 @@ describe("graph retrieval mappers", () => {
           text_content: "Apply lubricant at the designated point.",
           embed_text: "Apply lubricant at the designated point.",
           embedding_mode: "raw",
+          source_relative_path: "1-Grinding 1/Manuals/manual.pdf",
+          source_relative_paths: [
+            "1-Grinding 1/Manuals/manual.pdf",
+            "1-Grinding 1/Archive/manual.pdf",
+          ],
         },
       ],
       retrieval_debug: null,
@@ -101,9 +112,42 @@ describe("graph retrieval mappers", () => {
           chunkId: "chunk-1",
           documentFilename: "Grinding/manual.pdf",
           pageNumber: 12,
+          sourceRelativePaths: [
+            "1-Grinding 1/Manuals/manual.pdf",
+            "1-Grinding 1/Archive/manual.pdf",
+          ],
         },
       ],
-      hits: [{ chunkId: "chunk-1", documentId: "doc-1" }],
+      hits: [
+        {
+          chunkId: "chunk-1",
+          documentId: "doc-1",
+          sourceRelativePaths: [
+            "1-Grinding 1/Manuals/manual.pdf",
+            "1-Grinding 1/Archive/manual.pdf",
+          ],
+        },
+      ],
     });
+  });
+
+  it("falls back to a singular retrieval source path", () => {
+    const hit = mapBackendRetrievalSearchHit({
+      chunk_id: "chunk-legacy",
+      document_id: "doc-legacy",
+      document_filename: "manual.pdf",
+      document_file_type: "pdf",
+      dataset_ids: [],
+      chunk_index: 0,
+      content_types: ["text"],
+      score: 0.8,
+      excerpt: "Legacy evidence",
+      text_content: "Legacy evidence",
+      embed_text: "Legacy evidence",
+      embedding_mode: "raw",
+      source_relative_path: "Legacy/manual.pdf",
+    });
+
+    expect(hit.sourceRelativePaths).toEqual(["Legacy/manual.pdf"]);
   });
 });
