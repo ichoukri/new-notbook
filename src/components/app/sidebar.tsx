@@ -18,6 +18,7 @@ import {
   Plus,
   LogOut,
   HelpCircle,
+  MessageSquareText,
 } from "lucide-react";
 
 const NAV_GROUPS = [
@@ -33,6 +34,7 @@ const NAV_GROUPS = [
   {
     label: "Explore",
     items: [
+      { label: "Knowledge Chat", icon: MessageSquareText, path: "/chat" },
       { label: "Retrieval Test", icon: Search, path: "/retrieval" },
       { label: "Knowledge Graph", icon: Network, path: "/graph" },
       { label: "Chunk Explorer", icon: Box, path: "/chunks" },

@@ -172,6 +172,28 @@ export type TGroundedAnswerResponse = {
   retrievalDebug: TRetrievalSearchDebug | null;
 };
 
+export type TKnowledgeChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type TKnowledgeChatRequest = {
+  message: string;
+  dataset_id: string;
+  history: TKnowledgeChatTurn[];
+  top_k: number;
+};
+
+export type TBackendKnowledgeChatResponse = TBackendGroundedAnswerResponse & {
+  message: string;
+  resolved_query: string;
+};
+
+export type TKnowledgeChatResponse = TGroundedAnswerResponse & {
+  message: string;
+  resolvedQuery: string;
+};
+
 function getRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -346,5 +368,15 @@ export function mapBackendGroundedAnswerResponse(
     retrievalDebug: response.retrieval_debug
       ? mapBackendRetrievalSearchDebug(response.retrieval_debug)
       : null,
+  };
+}
+
+export function mapBackendKnowledgeChatResponse(
+  response: TBackendKnowledgeChatResponse,
+): TKnowledgeChatResponse {
+  return {
+    ...mapBackendGroundedAnswerResponse(response),
+    message: response.message,
+    resolvedQuery: response.resolved_query,
   };
 }

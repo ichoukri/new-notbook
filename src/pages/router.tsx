@@ -23,6 +23,7 @@ const NewIngestionPage = lazy(() => import("@/pages/private/ingestions/new"));
 const IngestionStatusPage = lazy(() => import("@/pages/private/ingestions/auto"));
 const ChunksPage = lazy(() => import("@/pages/private/chunks"));
 const KnowledgeGraphPage = lazy(() => import("@/pages/private/graph"));
+const KnowledgeChatPage = lazy(() => import("@/pages/private/chat"));
 const RetrievalPage = lazy(() => import("@/pages/private/retrieval"));
 const ActivityPage = lazy(() => import("@/pages/private/activity"));
 const SettingsPage = lazy(() => import("@/pages/private/settings"));
@@ -44,6 +45,7 @@ export default function Router() {
               <Route path="/ingestions/auto" element={<IngestionStatusPage />} />
               <Route path="/chunks" element={<ChunksPage />} />
               <Route path="/graph" element={<KnowledgeGraphPage />} />
+              <Route path="/chat" element={<KnowledgeChatPage />} />
               <Route path="/retrieval" element={<RetrievalPage />} />
               <Route path="/activity" element={<ActivityPage />} />
               <Route path="/settings" element={<SettingsPage />} />
