@@ -36,6 +36,9 @@ function group(
     parentId: null,
     status: "active",
     datasetIds,
+    metadata: null,
+    createdAt: "2026-07-19",
+    updatedAt: "2026-07-19",
     descendantDatasetIds: [
       ...new Set([
         ...datasetIds,

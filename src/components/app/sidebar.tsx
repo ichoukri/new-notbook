@@ -19,6 +19,7 @@ import {
   LogOut,
   HelpCircle,
   MessageSquareText,
+  FolderTree,
 } from "lucide-react";
 
 const NAV_GROUPS = [
@@ -27,6 +28,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/" },
       { label: "Datasets", icon: Database, path: "/datasets" },
+      { label: "Knowledge Groups", icon: FolderTree, path: "/knowledge-groups" },
       { label: "Documents", icon: FileText, path: "/documents" },
       { label: "Ingestions", icon: Zap, path: "/ingestions/new" },
     ],

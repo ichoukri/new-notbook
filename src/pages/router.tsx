@@ -17,6 +17,9 @@ const DevPage = lazy(() => import("@/pages/public/dev"));
 const DashboardPage = lazy(() => import("@/pages/private/dashboard"));
 const DatasetsPage = lazy(() => import("@/pages/private/datasets"));
 const DatasetDetailPage = lazy(() => import("@/pages/private/datasets/detail"));
+const KnowledgeGroupsPage = lazy(
+  () => import("@/pages/private/knowledge-groups"),
+);
 const DocumentsPage = lazy(() => import("@/pages/private/documents"));
 const DocumentDetailPage = lazy(() => import("@/pages/private/documents/detail"));
 const NewIngestionPage = lazy(() => import("@/pages/private/ingestions/new"));
@@ -38,6 +41,7 @@ export default function Router() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/datasets" element={<DatasetsPage />} />
               <Route path="/datasets/:id" element={<DatasetDetailPage />} />
+              <Route path="/knowledge-groups" element={<KnowledgeGroupsPage />} />
               <Route path="/documents" element={<DocumentsPage />} />
               <Route path="/documents/:id" element={<DocumentDetailPage />} />
               <Route path="/ingestions/new" element={<NewIngestionPage />} />

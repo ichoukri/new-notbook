@@ -130,6 +130,15 @@ class BackendApi {
     return response.data;
   }
 
+  async replace<TResponse, TInput>(
+    path: string,
+    id: string,
+    data: TInput,
+  ): Promise<TResponse> {
+    const response = await this.api.put<TResponse>(path + `/${id}`, data);
+    return response.data;
+  }
+
   async updateUser<T>(path: string, data: Partial<T>): Promise<T> {
     const response = await this.api.patch<T>(path, data);
     return response.data;
