@@ -9,9 +9,12 @@ import {
   mapBackendDataset,
 } from "@/core/datasets";
 import {
+  mapBackendGroundedAnswerResponse,
   mapBackendRetrievalSearchDebug,
   mapBackendRetrievalSearchHit,
+  type TBackendGroundedAnswerResponse,
   type TBackendRetrievalSearchResponse,
+  type TGroundedAnswerResponse,
   type TRetrievalQueryExpansionMode,
   type TRetrievalSearchDebug,
   type TRetrievalSearchHit,
@@ -28,13 +31,16 @@ export default function RetrievalTestPage() {
   const [query, setQuery] = useState("");
   const [committedQuery, setCommittedQuery] = useState("");
   const [results, setResults] = useState<TRetrievalSearchHit[] | null>(null);
+  const [groundedAnswer, setGroundedAnswer] =
+    useState<TGroundedAnswerResponse | null>(null);
   const [selectedResult, setSelectedResult] =
     useState<TRetrievalSearchHit | null>(null);
   const [topK, setTopK] = useState([5]);
   const [candidateK, setCandidateK] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
+  const [answering, setAnswering] = useState(false);
   const [searchMode, setSearchMode] =
-    useState<RetrievalSearchModeId>("semantic");
+    useState<RetrievalSearchModeId>("graph_mix");
   const [queryExpansion, setQueryExpansion] =
     useState<TRetrievalQueryExpansionMode>("none");
   const [lastRunMode, setLastRunMode] =
@@ -93,15 +99,31 @@ export default function RetrievalTestPage() {
     [datasets],
   );
 
+  const buildRequest = (trimmedQuery: string): TRetrievalSearchRequest => ({
+    query: trimmedQuery,
+    search_mode: searchMode,
+    query_expansion: queryExpansion,
+    top_k: topK[0],
+    candidate_k: candidateK,
+    scope: {
+      dataset_id: dataset !== "all" ? dataset : null,
+    },
+    filters: {
+      content_types: contentTypeFilter !== "all" ? [contentTypeFilter] : [],
+    },
+    debug: debugEnabled,
+  });
+
   const executeSearch = async (value = query) => {
     const trimmedQuery = value.trim();
-    if (!trimmedQuery || searching) {
+    if (!trimmedQuery || searching || answering) {
       return;
     }
 
     setSearching(true);
     setCommittedQuery(trimmedQuery);
     setSelectedResult(null);
+    setGroundedAnswer(null);
     setDebugInfo(null);
     setPageError("");
     setLastRunMode(searchMode);
@@ -109,20 +131,7 @@ export default function RetrievalTestPage() {
     const startedAt = performance.now();
 
     try {
-      const payload: TRetrievalSearchRequest = {
-        query: trimmedQuery,
-        search_mode: searchMode,
-        query_expansion: queryExpansion,
-        top_k: topK[0],
-        candidate_k: candidateK,
-        scope: {
-          dataset_id: dataset !== "all" ? dataset : null,
-        },
-        filters: {
-          content_types: contentTypeFilter !== "all" ? [contentTypeFilter] : [],
-        },
-        debug: debugEnabled,
-      };
+      const payload = buildRequest(trimmedQuery);
 
       const response = await backendApi.create<
         TBackendRetrievalSearchResponse,
@@ -145,11 +154,51 @@ export default function RetrievalTestPage() {
     }
   };
 
+  const executeAnswer = async (value = query) => {
+    const trimmedQuery = value.trim();
+    if (!trimmedQuery || searching || answering) {
+      return;
+    }
+
+    setAnswering(true);
+    setCommittedQuery(trimmedQuery);
+    setSelectedResult(null);
+    setGroundedAnswer(null);
+    setDebugInfo(null);
+    setPageError("");
+    setLastRunMode(searchMode);
+
+    const startedAt = performance.now();
+
+    try {
+      const payload = buildRequest(trimmedQuery);
+      const response = await backendApi.create<
+        TBackendGroundedAnswerResponse,
+        TRetrievalSearchRequest
+      >("/retrieval/answer", payload);
+      const mapped = mapBackendGroundedAnswerResponse(response);
+
+      setGroundedAnswer(mapped);
+      setResults(mapped.hits);
+      setDebugInfo(mapped.retrievalDebug);
+      setLatency(Math.round(performance.now() - startedAt));
+    } catch (error) {
+      setResults([]);
+      setLatency(Math.round(performance.now() - startedAt));
+      setPageError(
+        getApiErrorMessage(error, "Could not generate a grounded answer."),
+      );
+    } finally {
+      setAnswering(false);
+    }
+  };
+
   const clearSearch = () => {
     setQuery("");
     setCommittedQuery("");
     setResults(null);
     setSelectedResult(null);
+    setGroundedAnswer(null);
     setDebugInfo(null);
     setLatency(null);
     setPageError("");
@@ -168,6 +217,7 @@ export default function RetrievalTestPage() {
           results={results}
           latency={latency}
           searching={searching}
+          answering={answering}
           isLoadingDatasets={isLoadingDatasets}
           searchMode={searchMode}
           lastRunMode={lastRunMode}
@@ -182,6 +232,7 @@ export default function RetrievalTestPage() {
           pageError={pageError}
           onQueryChange={setQuery}
           onSearch={executeSearch}
+          onAnswer={executeAnswer}
           onClear={clearSearch}
           onSearchModeChange={setSearchMode}
           onDatasetChange={setDataset}
@@ -195,6 +246,7 @@ export default function RetrievalTestPage() {
 
         <RetrievalResultsArea
           results={results}
+          groundedAnswer={groundedAnswer}
           searching={searching}
           committedQuery={committedQuery}
           selectedResult={selectedResult}

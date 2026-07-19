@@ -1,4 +1,4 @@
-import { BookOpen, Sparkles, Zap } from "lucide-react";
+import { BookOpen, Network, Sparkles, Zap } from "lucide-react";
 
 export const EXAMPLE_QUERIES = [
   "How does authentication work?",
@@ -16,6 +16,12 @@ export const SEARCH_MODES = [
   },
   { id: "hybrid", label: "Hybrid", icon: Zap, desc: "Summary + raw text combined" },
   { id: "keyword", label: "Keyword", icon: BookOpen, desc: "Exact keyword matching" },
+  {
+    id: "graph_mix",
+    label: "Graph Mix",
+    icon: Network,
+    desc: "Hybrid retrieval expanded through approved entities and evidence",
+  },
 ] as const;
 
 export const CONTENT_TYPE_OPTIONS = [

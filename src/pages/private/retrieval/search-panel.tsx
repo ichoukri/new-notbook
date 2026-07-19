@@ -5,6 +5,7 @@ import {
   Cpu,
   Database,
   Loader2,
+  MessageSquareText,
   Network,
   Search,
   SlidersHorizontal,
@@ -44,6 +45,7 @@ type RetrievalSearchPanelProps = {
   results: TRetrievalSearchHit[] | null;
   latency: number | null;
   searching: boolean;
+  answering: boolean;
   isLoadingDatasets: boolean;
   searchMode: RetrievalSearchModeId;
   lastRunMode: RetrievalSearchModeId | null;
@@ -58,6 +60,7 @@ type RetrievalSearchPanelProps = {
   pageError: string;
   onQueryChange: (query: string) => void;
   onSearch: SearchHandler;
+  onAnswer: SearchHandler;
   onClear: () => void;
   onSearchModeChange: (mode: RetrievalSearchModeId) => void;
   onDatasetChange: (datasetId: string) => void;
@@ -76,6 +79,7 @@ export function RetrievalSearchPanel({
   results,
   latency,
   searching,
+  answering,
   isLoadingDatasets,
   searchMode,
   lastRunMode,
@@ -90,6 +94,7 @@ export function RetrievalSearchPanel({
   pageError,
   onQueryChange,
   onSearch,
+  onAnswer,
   onClear,
   onSearchModeChange,
   onDatasetChange,
@@ -120,6 +125,10 @@ export function RetrievalSearchPanel({
   const runSearch = (value?: string) => {
     void onSearch(value);
   };
+  const runAnswer = (value?: string) => {
+    void onAnswer(value);
+  };
+  const busy = searching || answering;
 
   const clearSearch = () => {
     onClear();
@@ -161,7 +170,7 @@ export function RetrievalSearchPanel({
         </div>
         <Button
           onClick={() => runSearch()}
-          disabled={searching || !query.trim()}
+          disabled={busy || !query.trim()}
           className="h-12 min-w-28 gap-2 px-6 text-sm font-semibold"
         >
           {searching ? (
@@ -173,6 +182,26 @@ export function RetrievalSearchPanel({
             <>
               <Search className="size-4" />
               Search
+            </>
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => runAnswer()}
+          disabled={busy || !query.trim()}
+          className="h-12 min-w-28 gap-2 border-emerald-200 bg-emerald-50 px-6 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
+          title="Generate an answer only when retrieved evidence supports it"
+        >
+          {answering ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Answering
+            </>
+          ) : (
+            <>
+              <MessageSquareText className="size-4" />
+              Ask
             </>
           )}
         </Button>
@@ -414,6 +443,15 @@ export function RetrievalSearchPanel({
               {debugInfo.candidateLimit})
             </span>
           </div>
+          {debugInfo.graphOutcome && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-amber-700">
+              <span>
+                Graph: {debugInfo.graphOutcome.replaceAll("_", " ")}
+              </span>
+              <span>{debugInfo.graphSeedCount} entity seeds</span>
+              <span>{debugInfo.graphEvidenceCount} evidence chunks</span>
+            </div>
+          )}
           {debugInfo.expandedQueries.length > 1 && (
             <div className="space-y-1">
               <span className="text-xs font-medium text-amber-700">

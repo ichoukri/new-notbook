@@ -1,10 +1,15 @@
 import { Code2, Database, Filter, Search, Sparkles } from "lucide-react";
-import type { TRetrievalSearchHit } from "@/core/retrieval";
+import type {
+  TGroundedAnswerResponse,
+  TRetrievalSearchHit,
+} from "@/core/retrieval";
 import { cn } from "@/lib/utils";
+import { GroundedAnswerCard } from "./grounded-answer";
 import { PreviewPanel, ResultCard } from "./result-components";
 
 type RetrievalResultsAreaProps = {
   results: TRetrievalSearchHit[] | null;
+  groundedAnswer: TGroundedAnswerResponse | null;
   searching: boolean;
   committedQuery: string;
   selectedResult: TRetrievalSearchHit | null;
@@ -15,6 +20,7 @@ type RetrievalResultsAreaProps = {
 
 export function RetrievalResultsArea({
   results,
+  groundedAnswer,
   searching,
   committedQuery,
   selectedResult,
@@ -43,8 +49,22 @@ export function RetrievalResultsArea({
             )}
           >
             <div className="space-y-3 p-5">
+              {groundedAnswer && (
+                <GroundedAnswerCard
+                  answer={groundedAnswer}
+                  onSelectEvidence={(chunkId) => {
+                    const evidence = results.find(
+                      (result) => result.chunkId === chunkId,
+                    );
+                    if (evidence) {
+                      onSelectResult(evidence);
+                    }
+                  }}
+                  onOpenDocument={onOpenDocument}
+                />
+              )}
               {results.length === 0 ? (
-                <RetrievalEmptyResultsState />
+                groundedAnswer ? null : <RetrievalEmptyResultsState />
               ) : (
                 results.map((result, index) => (
                   <ResultCard

@@ -1,6 +1,17 @@
-export type TRetrievalSearchMode = "semantic" | "hybrid" | "keyword";
+export type TRetrievalSearchMode =
+  | "semantic"
+  | "hybrid"
+  | "keyword"
+  | "graph_mix";
 export type TRetrievalQueryExpansionMode = "none" | "multi_query";
 type TRetrievalEmbeddingMode = "summary" | "raw" | "pending";
+export type TRetrievalGraphOutcome =
+  | "ok"
+  | "no_seeds"
+  | "no_graph_evidence"
+  | "disabled_fallback"
+  | "unavailable_fallback"
+  | "no_documents_in_scope";
 
 export type TRetrievalSearchRequest = {
   query: string;
@@ -21,6 +32,9 @@ export type TRetrievalSearchRequest = {
 export type TBackendRetrievalQueryDebug = {
   query: string;
   candidate_count: number;
+  graph_outcome?: TRetrievalGraphOutcome | null;
+  graph_seed_count?: number;
+  graph_evidence_count?: number;
 };
 
 export type TBackendRetrievalSearchDebug = {
@@ -28,6 +42,9 @@ export type TBackendRetrievalSearchDebug = {
   candidate_limit: number;
   per_query_candidate_counts: TBackendRetrievalQueryDebug[];
   final_candidate_count: number;
+  graph_outcome?: TRetrievalGraphOutcome | null;
+  graph_seed_count?: number;
+  graph_evidence_count?: number;
 };
 
 export type TBackendRetrievalSearchResponse = {
@@ -42,8 +59,17 @@ export type TBackendRetrievalSearchResponse = {
 export type TRetrievalSearchDebug = {
   expandedQueries: string[];
   candidateLimit: number;
-  perQueryCandidateCounts: { query: string; candidateCount: number }[];
+  perQueryCandidateCounts: {
+    query: string;
+    candidateCount: number;
+    graphOutcome: TRetrievalGraphOutcome | null;
+    graphSeedCount: number;
+    graphEvidenceCount: number;
+  }[];
   finalCandidateCount: number;
+  graphOutcome: TRetrievalGraphOutcome | null;
+  graphSeedCount: number;
+  graphEvidenceCount: number;
 };
 
 export type TBackendRetrievalSearchHit = {
@@ -88,6 +114,54 @@ export type TRetrievalSearchHit = {
   vectorStore?: string | null;
   chunkMetadata?: Record<string, unknown> | null;
   sourceUrl?: string | null;
+};
+
+export type TBackendGroundedCitation = {
+  number: number;
+  chunk_id: string;
+  document_id: string;
+  document_filename: string;
+  page_number?: number | null;
+  excerpt: string;
+  source_url?: string | null;
+};
+
+export type TGroundedCitation = {
+  number: number;
+  chunkId: string;
+  documentId: string;
+  documentFilename: string;
+  pageNumber?: number | null;
+  excerpt: string;
+  sourceUrl?: string | null;
+};
+
+export type TRetrievalAbstentionReason =
+  | "no_evidence"
+  | "insufficient_context"
+  | "invalid_grounding"
+  | "generation_failed";
+
+export type TBackendGroundedAnswerResponse = {
+  query: string;
+  answer: string;
+  abstained: boolean;
+  abstention_reason?: TRetrievalAbstentionReason | null;
+  citation_indices: number[];
+  citations: TBackendGroundedCitation[];
+  hits: TBackendRetrievalSearchHit[];
+  retrieval_debug?: TBackendRetrievalSearchDebug | null;
+};
+
+export type TGroundedAnswerResponse = {
+  query: string;
+  answer: string;
+  abstained: boolean;
+  abstentionReason: TRetrievalAbstentionReason | null;
+  citationIndices: number[];
+  citations: TGroundedCitation[];
+  hits: TRetrievalSearchHit[];
+  retrievalDebug: TRetrievalSearchDebug | null;
 };
 
 function getRecord(value: unknown): Record<string, unknown> | null {
@@ -223,7 +297,38 @@ export function mapBackendRetrievalSearchDebug(
     perQueryCandidateCounts: debug.per_query_candidate_counts.map((item) => ({
       query: item.query,
       candidateCount: item.candidate_count,
+      graphOutcome: item.graph_outcome ?? null,
+      graphSeedCount: item.graph_seed_count ?? 0,
+      graphEvidenceCount: item.graph_evidence_count ?? 0,
     })),
     finalCandidateCount: debug.final_candidate_count,
+    graphOutcome: debug.graph_outcome ?? null,
+    graphSeedCount: debug.graph_seed_count ?? 0,
+    graphEvidenceCount: debug.graph_evidence_count ?? 0,
+  };
+}
+
+export function mapBackendGroundedAnswerResponse(
+  response: TBackendGroundedAnswerResponse,
+): TGroundedAnswerResponse {
+  return {
+    query: response.query,
+    answer: response.answer,
+    abstained: response.abstained,
+    abstentionReason: response.abstention_reason ?? null,
+    citationIndices: response.citation_indices,
+    citations: response.citations.map((citation) => ({
+      number: citation.number,
+      chunkId: citation.chunk_id,
+      documentId: citation.document_id,
+      documentFilename: citation.document_filename,
+      pageNumber: citation.page_number ?? null,
+      excerpt: citation.excerpt,
+      sourceUrl: citation.source_url ?? null,
+    })),
+    hits: response.hits.map(mapBackendRetrievalSearchHit),
+    retrievalDebug: response.retrieval_debug
+      ? mapBackendRetrievalSearchDebug(response.retrieval_debug)
+      : null,
   };
 }
