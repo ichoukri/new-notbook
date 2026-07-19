@@ -8,6 +8,7 @@ import {
   Database,
   ExternalLink,
   FileText,
+  FolderTree,
   LoaderCircle,
   MessageSquareText,
   RotateCcw,
@@ -35,6 +36,11 @@ import {
   mapBackendDataset,
 } from "@/core/datasets";
 import {
+  type TBackendKnowledgeGroupTreeNode,
+  type TKnowledgeGroupTreeNode,
+  mapBackendKnowledgeGroupTree,
+} from "@/core/knowledge-groups";
+import {
   type TBackendKnowledgeChatResponse,
   type TKnowledgeChatRequest,
   type TKnowledgeChatResponse,
@@ -45,6 +51,10 @@ import {
   buildKnowledgeChatHistory,
   getCitationFolder,
 } from "./chat-utils";
+import {
+  buildKnowledgeScopePayload,
+  flattenKnowledgeScopes,
+} from "./knowledge-scope-utils";
 
 type TChatMessage = {
   id: string;
@@ -222,45 +232,65 @@ export default function KnowledgeChatPage() {
   const navigate = useNavigate();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const [datasets, setDatasets] = useState<TDataset[]>([]);
-  const [datasetId, setDatasetId] = useState("");
+  const [knowledgeGroups, setKnowledgeGroups] = useState<
+    TKnowledgeGroupTreeNode[]
+  >([]);
+  const [scopeValue, setScopeValue] = useState("");
   const [messages, setMessages] = useState<TChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [loadingDatasets, setLoadingDatasets] = useState(true);
+  const [loadingKnowledge, setLoadingKnowledge] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadDatasets = async () => {
-      setLoadingDatasets(true);
+    const loadKnowledge = async () => {
+      setLoadingKnowledge(true);
       try {
-        const response = await backendApi.findMany<TBackendDataset>(
-          "/datasets/",
-          {
+        const [datasetResponse, groupResponse] = await Promise.all([
+          backendApi.findMany<TBackendDataset>("/datasets/", {
             include_documents: "false",
             limit: "100",
             sort_by: "updated_at",
             sort_order: "desc",
-          },
-        );
+          }),
+          backendApi.findMany<TBackendKnowledgeGroupTreeNode>(
+            "/knowledge-groups/tree",
+          ),
+        ]);
         if (cancelled) return;
-        const mapped = response.map(mapBackendDataset);
-        const grinding = mapped.find((dataset) =>
-          dataset.name.toLocaleLowerCase().includes("grinding"),
+        const mappedDatasets = datasetResponse.map(mapBackendDataset);
+        const mappedGroups = groupResponse.map(mapBackendKnowledgeGroupTree);
+        const scopes = flattenKnowledgeScopes(mappedGroups, mappedDatasets);
+        const grindingGroup = scopes.find(
+          (scope) =>
+            scope.type === "group" &&
+            scope.name.toLocaleLowerCase().includes("grinding"),
         );
-        setDatasets(mapped);
-        setDatasetId((current) => current || grinding?.id || mapped[0]?.id || "");
+        const grindingDataset = scopes.find(
+          (scope) =>
+            scope.type === "dataset" &&
+            scope.name.toLocaleLowerCase().includes("grinding"),
+        );
+        setDatasets(mappedDatasets);
+        setKnowledgeGroups(mappedGroups);
+        setScopeValue(
+          (current) =>
+            current || grindingGroup?.value || grindingDataset?.value || scopes[0]?.value || "",
+        );
       } catch (requestError) {
         if (!cancelled) {
-          setError(getApiErrorMessage(requestError, "Could not load datasets."));
+          setError(
+            getApiErrorMessage(requestError, "Could not load knowledge bases."),
+          );
         }
       } finally {
-        if (!cancelled) setLoadingDatasets(false);
+        if (!cancelled) setLoadingKnowledge(false);
       }
     };
 
-    void loadDatasets();
+    void loadKnowledge();
     return () => {
       cancelled = true;
     };
@@ -270,9 +300,14 @@ export default function KnowledgeChatPage() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === datasetId) ?? null,
-    [datasetId, datasets],
+  const knowledgeScopes = useMemo(
+    () => flattenKnowledgeScopes(knowledgeGroups, datasets),
+    [datasets, knowledgeGroups],
+  );
+
+  const selectedScope = useMemo(
+    () => knowledgeScopes.find((scope) => scope.value === scopeValue) ?? null,
+    [knowledgeScopes, scopeValue],
   );
 
   const resetConversation = () => {
@@ -281,14 +316,14 @@ export default function KnowledgeChatPage() {
     setError("");
   };
 
-  const changeDataset = (value: string) => {
-    setDatasetId(value);
+  const changeKnowledgeScope = (value: string) => {
+    setScopeValue(value);
     resetConversation();
   };
 
   const sendMessage = async (suggested?: string) => {
     const message = (suggested ?? input).trim();
-    if (!message || !datasetId || sending) return;
+    if (!message || !selectedScope || sending) return;
 
     const history = buildKnowledgeChatHistory(messages);
     const userMessage: TChatMessage = {
@@ -304,7 +339,7 @@ export default function KnowledgeChatPage() {
     try {
       const payload: TKnowledgeChatRequest = {
         message,
-        dataset_id: datasetId,
+        ...buildKnowledgeScopePayload(selectedScope),
         history,
         top_k: 10,
       };
@@ -356,20 +391,39 @@ export default function KnowledgeChatPage() {
 
           <div className="flex items-center gap-2">
             <Select
-              value={datasetId}
-              onValueChange={changeDataset}
-              disabled={loadingDatasets || datasets.length === 0}
+              value={scopeValue}
+              onValueChange={changeKnowledgeScope}
+              disabled={loadingKnowledge || knowledgeScopes.length === 0}
             >
-              <SelectTrigger className="h-9 w-64 rounded-xl border-gray-200 bg-white text-xs">
-                <Database className="size-3.5" />
+              <SelectTrigger className="h-9 w-72 rounded-xl border-gray-200 bg-white text-xs">
+                {selectedScope?.type === "group" ? (
+                  <FolderTree className="size-3.5" />
+                ) : (
+                  <Database className="size-3.5" />
+                )}
                 <SelectValue
-                  placeholder={loadingDatasets ? "Loading knowledge..." : "Select knowledge base"}
+                  placeholder={loadingKnowledge ? "Loading knowledge..." : "Select knowledge scope"}
                 />
               </SelectTrigger>
               <SelectContent>
-                {datasets.map((dataset) => (
-                  <SelectItem key={dataset.id} value={dataset.id}>
-                    {dataset.name}
+                {knowledgeScopes.map((scope) => (
+                  <SelectItem key={scope.value} value={scope.value}>
+                    <span
+                      className="flex items-center gap-2"
+                      style={{ paddingLeft: `${scope.depth * 14}px` }}
+                    >
+                      {scope.type === "group" ? (
+                        <FolderTree className="size-3.5 text-indigo-500" />
+                      ) : (
+                        <Database className="size-3.5 text-gray-400" />
+                      )}
+                      <span>{scope.name}</span>
+                      {scope.type === "group" && (
+                        <span className="text-[10px] text-gray-400">
+                          {scope.datasetCount} datasets
+                        </span>
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -410,7 +464,7 @@ export default function KnowledgeChatPage() {
                     key={question}
                     type="button"
                     onClick={() => void sendMessage(question)}
-                    disabled={!datasetId || sending}
+                    disabled={!selectedScope || sending}
                     className="rounded-2xl border border-gray-200 bg-white p-4 text-sm leading-5 text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Sparkles className="mb-3 size-4 text-indigo-500" />
@@ -418,9 +472,12 @@ export default function KnowledgeChatPage() {
                   </button>
                 ))}
               </div>
-              {selectedDataset && (
+              {selectedScope && (
                 <p className="mt-5 text-xs text-gray-400">
-                  Current knowledge: {selectedDataset.name}
+                  Current knowledge: {selectedScope.name}
+                  {selectedScope.type === "group"
+                    ? ` · ${selectedScope.datasetCount} descendant datasets`
+                    : " · single dataset"}
                 </p>
               )}
             </section>
@@ -474,11 +531,11 @@ export default function KnowledgeChatPage() {
                 }
               }}
               placeholder={
-                datasetId
+                selectedScope
                   ? "Ask a question about the selected knowledge base..."
                   : "Select a knowledge base before asking a question"
               }
-              disabled={!datasetId || sending}
+              disabled={!selectedScope || sending}
               rows={2}
               className="max-h-40 min-h-14 resize-none border-0 px-3 py-2 shadow-none focus-visible:ring-0"
             />
@@ -490,7 +547,7 @@ export default function KnowledgeChatPage() {
                 type="submit"
                 size="sm"
                 className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-                disabled={!input.trim() || !datasetId || sending}
+                disabled={!input.trim() || !selectedScope || sending}
               >
                 {sending ? (
                   <LoaderCircle className="size-4 animate-spin" />

@@ -179,7 +179,8 @@ export type TKnowledgeChatTurn = {
 
 export type TKnowledgeChatRequest = {
   message: string;
-  dataset_id: string;
+  dataset_id?: string;
+  knowledge_group_id?: string;
   history: TKnowledgeChatTurn[];
   top_k: number;
 };
