@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mapBackendGroundedAnswerResponse,
+  mapBackendKnowledgeChatResponse,
   mapBackendRetrievalSearchHit,
   mapBackendRetrievalSearchDebug,
   type TBackendGroundedAnswerResponse,
@@ -149,5 +150,29 @@ describe("graph retrieval mappers", () => {
     });
 
     expect(hit.sourceRelativePaths).toEqual(["Legacy/manual.pdf"]);
+  });
+
+  it("maps the structured knowledge-chat clarification contract", () => {
+    const response = mapBackendKnowledgeChatResponse({
+      query: "Que faut-il faire sur le broyeur ?",
+      answer: "De quel équipement parlez-vous ?",
+      abstained: false,
+      citation_indices: [],
+      citations: [],
+      hits: [],
+      message: "Que faut-il faire sur le broyeur ?",
+      resolved_query: "Que faut-il faire sur le broyeur ?",
+      needs_clarification: true,
+      clarification_question: "De quel équipement parlez-vous ?",
+      equipment_tags: [],
+      routed_document_types: ["operating_procedures"],
+    });
+
+    expect(response).toMatchObject({
+      needsClarification: true,
+      clarificationQuestion: "De quel équipement parlez-vous ?",
+      equipmentTags: [],
+      routedDocumentTypes: ["operating_procedures"],
+    });
   });
 });

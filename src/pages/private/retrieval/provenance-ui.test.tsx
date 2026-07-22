@@ -74,6 +74,7 @@ describe("retrieval provenance UI", () => {
           pageNumber: 12,
           excerpt: "Apply lubricant at the designated point.",
           sourceRelativePaths: hit.sourceRelativePaths,
+          regions: [],
         },
       ],
       hits: [hit],

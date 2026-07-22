@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
@@ -10,17 +10,29 @@ import {
   type TDataset,
   mapBackendDataset,
 } from "@/core/datasets";
-import type {
-  TBackendDocumentMutationResponse,
-  TBackendFinalizeRequest,
-  TBackendPrepareUploadRequest,
-  TBackendPrepareUploadResponse,
+import {
+  type TBackendDocumentMutationResponse,
+  type TBackendFinalizeRequest,
+  type TBackendPrepareUploadRequest,
+  type TBackendPrepareUploadResponse,
+  isLiveInPipeline,
 } from "@/core/ingestions";
 import axios from "axios";
 import { AlertCircle, ArrowRight, ClipboardList, Zap } from "lucide-react";
+import {
+  buildIngestionBatchUrl,
+  buildIngestionReviewUrl,
+  createIngestionBatchId,
+  dedupeDocumentIds,
+  saveIngestionBatch,
+} from "@/core/batches";
 import { DatasetPicker } from "./new-ingestion/dataset-picker";
 import { Field } from "./new-ingestion/field";
 import { FilePicker } from "./new-ingestion/file-picker";
+import {
+  GUIDED_CONFIRM_THRESHOLD,
+  GuidedBatchDialog,
+} from "./new-ingestion/guided-batch-dialog";
 import { ModeCard } from "./new-ingestion/mode-card";
 import { ReadinessSteps } from "./new-ingestion/readiness-steps";
 import { ResultSummary } from "./new-ingestion/result-summary";
@@ -45,6 +57,11 @@ export default function NewIngestionPage() {
   const [datasetsError, setDatasetsError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [showGuidedConfirm, setShowGuidedConfirm] = useState(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+
+  // Abandon in-flight transfers if the page goes away mid-batch.
+  useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +117,7 @@ export default function NewIngestionPage() {
     const {
       accepted,
       skippedMacOSSidecars,
+      skippedHidden,
       skippedUnsupported,
       skippedOversize,
     } = collectAcceptedFiles(incoming);
@@ -140,6 +158,8 @@ export default function NewIngestionPage() {
       skipped.push(
         `${skippedMacOSSidecars} macOS sidecar${skippedMacOSSidecars === 1 ? "" : "s"}`,
       );
+    if (skippedHidden > 0)
+      skipped.push(`${skippedHidden} hidden/system file${skippedHidden === 1 ? "" : "s"}`);
     if (skippedUnsupported > 0)
       skipped.push(
         `${skippedUnsupported} unsupported file${skippedUnsupported === 1 ? "" : "s"}`,
@@ -159,8 +179,10 @@ export default function NewIngestionPage() {
     }
   };
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  // Takes a list so a folder row can drop its whole subtree in one action.
+  const removeItems = (ids: string[]) => {
+    const removed = new Set(ids);
+    setItems((prev) => prev.filter((item) => !removed.has(item.id)));
   };
 
   const clearItems = () => {
@@ -171,7 +193,10 @@ export default function NewIngestionPage() {
   // Upload one file end-to-end (presign → PUT → hash → finalize) and return the
   // resolved item with its outcome. Never throws — failures are captured on the
   // item so one bad file doesn't abort the batch.
-  const uploadOne = async (item: UploadItem): Promise<UploadItem> => {
+  const uploadOne = async (
+    item: UploadItem,
+    signal: AbortSignal,
+  ): Promise<UploadItem> => {
     const { file } = item;
     const uploadMetadata = buildUploadFileMetadata(file, item.relativePath);
     try {
@@ -184,9 +209,22 @@ export default function NewIngestionPage() {
       );
 
       await axios.put(prepareResponse.upload_url, file, {
+        signal,
         headers: {
           ...prepareResponse.headers,
           "Content-Type": file.type || "application/octet-stream",
+        },
+        onUploadProgress: (event) => {
+          // ``total`` is absent when the transfer is not measurable; leaving
+          // progress undefined keeps the row on an indeterminate bar rather
+          // than inventing a percentage.
+          if (!event.total) return;
+          const ratio = Math.min(event.loaded / event.total, 1);
+          setItems((prev) =>
+            prev.map((row) =>
+              row.id === item.id ? { ...row, progress: ratio } : row,
+            ),
+          );
         },
       });
 
@@ -213,12 +251,26 @@ export default function NewIngestionPage() {
         ...item,
         status: isDuplicate ? "duplicate" : "done",
         documentId: finalizeResponse.data.id,
+        datasetId: selectedDataset,
+        detail: isDuplicate ? finalizeResponse.message : undefined,
+        processingStatus: finalizeResponse.data.processing_status,
+        progress: 1,
       };
     } catch (error) {
+      // A cancelled transfer is a user decision, not a failure — surfacing it
+      // as an error would invite a pointless retry.
+      if (axios.isCancel(error) || signal.aborted) {
+        return {
+          ...item,
+          status: "cancelled",
+          progress: undefined,
+        };
+      }
       return {
         ...item,
         status: "error",
         error: getApiErrorMessage(error, "Upload failed."),
+        progress: undefined,
       };
     }
   };
@@ -229,11 +281,13 @@ export default function NewIngestionPage() {
   const runUploads = async (targets: UploadItem[]): Promise<UploadItem[]> => {
     setIsSubmitting(true);
     setFinished(false);
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     const targetIds = new Set(targets.map((item) => item.id));
     setItems((prev) =>
       prev.map((row) =>
         targetIds.has(row.id)
-          ? { ...row, status: "pending", error: undefined }
+          ? { ...row, status: "pending", error: undefined, progress: undefined }
           : row,
       ),
     );
@@ -245,12 +299,25 @@ export default function NewIngestionPage() {
       while (queue.length > 0) {
         const item = queue.shift();
         if (!item) break;
+        // Items still queued when the user cancels are reported as cancelled
+        // rather than left pending, so the result summary accounts for all of
+        // them and the retry action can pick them up.
+        if (controller.signal.aborted) {
+          const skipped: UploadItem = { ...item, status: "cancelled" };
+          results.push(skipped);
+          setItems((prev) =>
+            prev.map((row) => (row.id === skipped.id ? skipped : row)),
+          );
+          continue;
+        }
         setItems((prev) =>
           prev.map((row) =>
-            row.id === item.id ? { ...row, status: "uploading" } : row,
+            row.id === item.id
+              ? { ...row, status: "uploading", progress: undefined }
+              : row,
           ),
         );
-        const resolved = await uploadOne(item);
+        const resolved = await uploadOne(item, controller.signal);
         results.push(resolved);
         setItems((prev) =>
           prev.map((row) => (row.id === resolved.id ? resolved : row)),
@@ -264,9 +331,15 @@ export default function NewIngestionPage() {
       ),
     );
 
+    uploadAbortRef.current = null;
     setIsSubmitting(false);
     setFinished(true);
     return results;
+  };
+
+  const cancelUploads = () => {
+    uploadAbortRef.current?.abort();
+    toast.info("Cancelling — uploads already finished will keep ingesting.");
   };
 
   const handleStart = async () => {
@@ -275,39 +348,152 @@ export default function NewIngestionPage() {
     }
 
     const results = await runUploads(items);
-    const succeeded = results.filter(
-      (item) => item.status === "done" || item.status === "duplicate",
-    );
+    const started = results.filter((item) => item.status === "done");
+    const cancelled = results.filter((item) => item.status === "cancelled");
+    const duplicates = results.filter((item) => item.status === "duplicate");
     const failed = results.filter((item) => item.status === "error");
 
-    // Single-file upload preserves the original UX: jump straight to its status
-    // page. Bulk stays here and shows the per-file outcome.
-    if (results.length === 1 && succeeded.length === 1) {
-      navigate(
-        `/ingestions/status?document_id=${succeeded[0].documentId}&dataset_id=${selectedDataset}`,
+    // A cancelled run stays put: navigating away would hide what did and did
+    // not make it through, which is exactly what the user just asked about.
+    if (cancelled.length > 0) {
+      toast.info(
+        `Cancelled — ${started.length + duplicates.length} of ${results.length} uploaded before stopping.`,
       );
       return;
     }
 
-    if (failed.length === 0) {
-      toast.success(`Started ingestion for ${succeeded.length} file(s).`);
-    } else if (succeeded.length === 0) {
-      toast.error(`All ${failed.length} upload(s) failed.`);
-    } else {
-      toast.info(
-        `${succeeded.length} started, ${failed.length} failed. Review the list below.`,
+    // Single-file upload preserves the original UX: jump straight to its status
+    // page (for a duplicate this attaches to the existing document's stages).
+    // Bulk stays here and shows the per-file outcome with stage links.
+    if (results.length === 1 && failed.length === 0) {
+      navigate(
+        `/ingestions/status?document_id=${results[0].documentId}&dataset_id=${selectedDataset}`,
       );
+      return;
+    }
+
+    // Guided mode pauses every document for approval, so a bulk run would
+    // otherwise strand documents with no way to find them. Membership is decided
+    // by the document's own status, not by the upload outcome: a duplicate the
+    // backend returned untouched is often already sitting at an approval gate,
+    // and excluding it strands exactly the document the queue exists to surface.
+    // Deduped because content-hash matching can finalize several uploaded files
+    // onto one canonical document.
+    const reviewableIds = dedupeDocumentIds(
+      results
+        .filter(
+          (item) =>
+            item.documentId &&
+            item.processingStatus &&
+            isLiveInPipeline(item.processingStatus),
+        )
+        .map((item) => item.documentId as string),
+    );
+
+    if (mode === "guided" && reviewableIds.length > 0) {
+      const batch = {
+        id: createIngestionBatchId(),
+        datasetId: selectedDataset,
+        mode: "guided" as const,
+        documentIds: reviewableIds,
+        startedAt: new Date().toISOString(),
+      };
+
+      // Only navigate if the roster actually survived. Without it the review
+      // page can only render a dead end, so staying here with the result list
+      // is strictly better.
+      if (saveIngestionBatch(batch)) {
+        if (failed.length > 0) {
+          toast.warning(
+            `${reviewableIds.length} queued for review · ${failed.length} failed to upload.`,
+          );
+        }
+        navigate(buildIngestionReviewUrl(batch));
+        return;
+      }
+
+      toast.error(
+        "Could not open the review queue in this browser. Your documents are still ingesting — open them from the list below.",
+      );
+    }
+
+    // Auto mode with several documents: the pipeline keeps running server-side
+    // long after the uploads finish, so hand the batch to the live view instead
+    // of leaving the user on this form with a frozen count.
+    if (mode === "auto" && reviewableIds.length > 1) {
+      const batch = {
+        id: createIngestionBatchId(),
+        datasetId: selectedDataset,
+        mode: "auto" as const,
+        documentIds: reviewableIds,
+        startedAt: new Date().toISOString(),
+      };
+
+      if (saveIngestionBatch(batch)) {
+        if (failed.length > 0) {
+          toast.warning(
+            `${reviewableIds.length} ingesting · ${failed.length} failed to upload.`,
+          );
+        }
+        navigate(buildIngestionBatchUrl(batch));
+        return;
+      }
+
+      toast.error(
+        "Could not open the batch view in this browser. Your documents are still ingesting — open them from the list below.",
+      );
+    }
+
+    if (failed.length > 0) {
+      if (started.length === 0 && duplicates.length === 0) {
+        toast.error(`All ${failed.length} upload(s) failed.`);
+      } else {
+        toast.info(
+          `${started.length} started, ${duplicates.length} already in the dataset, ${failed.length} failed. Review the list below.`,
+        );
+      }
+    } else if (started.length === 0) {
+      toast.info(
+        `No new ingestions started — all ${duplicates.length} file(s) already exist in this dataset. Open a file's stages to review it.`,
+      );
+    } else if (duplicates.length > 0) {
+      toast.success(
+        `Started ingestion for ${started.length} file(s) · ${duplicates.length} already in the dataset.`,
+      );
+    } else {
+      toast.success(`Started ingestion for ${started.length} file(s).`);
     }
   };
 
+  // Guided at scale is a real commitment, so confirm before spending it.
+  const requestStart = () => {
+    if (mode === "guided" && items.length > GUIDED_CONFIRM_THRESHOLD) {
+      setShowGuidedConfirm(true);
+      return;
+    }
+    void handleStart();
+  };
+
+  // Cancelled files are resumable, not discarded: stopping a 200-file batch
+  // would otherwise strand everything that had not started, with no way back
+  // except clearing the selection and re-dropping the folder.
   const retryFailed = async () => {
     if (isSubmitting) return;
-    const failedItems = items.filter((item) => item.status === "error");
-    if (failedItems.length === 0) return;
-    const results = await runUploads(failedItems);
+    const resumable = items.filter(
+      (item) => item.status === "error" || item.status === "cancelled",
+    );
+    if (resumable.length === 0) return;
+    const results = await runUploads(resumable);
     const stillFailed = results.filter((item) => item.status === "error");
-    if (stillFailed.length === 0) {
-      toast.success(`Retried ${results.length} file(s) successfully.`);
+    const stillCancelled = results.filter(
+      (item) => item.status === "cancelled",
+    );
+    if (stillFailed.length === 0 && stillCancelled.length === 0) {
+      toast.success(`Uploaded ${results.length} remaining file(s).`);
+    } else if (stillCancelled.length > 0) {
+      toast.info(
+        `Stopped again — ${results.length - stillCancelled.length} of ${results.length} uploaded.`,
+      );
     } else {
       toast.error(`${stillFailed.length} of ${results.length} still failed.`);
     }
@@ -318,13 +504,26 @@ export default function NewIngestionPage() {
     (item) =>
       item.status === "done" ||
       item.status === "duplicate" ||
-      item.status === "error",
+      item.status === "error" ||
+      item.status === "cancelled",
   ).length;
+  // Weighted by size so one large file cannot make the bar jump; a settled item
+  // counts as fully transferred whatever its last reported progress was.
+  const uploadedBytes = items.reduce((sum, item) => {
+    if (item.status === "done" || item.status === "duplicate") {
+      return sum + item.file.size;
+    }
+    return sum + item.file.size * (item.progress ?? 0);
+  }, 0);
+  const uploadedRatio = totalSize > 0 ? uploadedBytes / totalSize : 0;
   const startedCount = items.filter((item) => item.status === "done").length;
   const duplicateCount = items.filter(
     (item) => item.status === "duplicate",
   ).length;
   const failedCount = items.filter((item) => item.status === "error").length;
+  const cancelledCount = items.filter(
+    (item) => item.status === "cancelled",
+  ).length;
   const canStart =
     Boolean(selectedDataset) && items.length > 0 && !isSubmitting;
   const filledCount = [
@@ -375,7 +574,12 @@ export default function NewIngestionPage() {
               isSubmitting={isSubmitting}
               onAddFiles={addFiles}
               onClear={clearItems}
-              onRemove={removeItem}
+              onRemove={removeItems}
+              onOpenItemStatus={(item) =>
+                navigate(
+                  `/ingestions/status?document_id=${item.documentId}&dataset_id=${item.datasetId ?? selectedDataset}`,
+                )
+              }
             />
           </Field>
 
@@ -398,8 +602,16 @@ export default function NewIngestionPage() {
                 icon={ClipboardList}
                 badge="Backend Ready"
                 title="Guided Mode"
-                description="Review each stage: extract, chunk, summarize, approve the knowledge graph, embed, and publish."
-                time="~5–10 min"
+                description={
+                  items.length > 1
+                    ? `Review each stage of all ${items.length} documents: extract, chunk, summarize, approve the knowledge graph, embed, and publish.`
+                    : "Review each stage: extract, chunk, summarize, approve the knowledge graph, embed, and publish."
+                }
+                time={
+                  items.length > 1
+                    ? `~5–10 min × ${items.length} documents`
+                    : "~5–10 min"
+                }
               />
             </div>
           </Field>
@@ -413,9 +625,11 @@ export default function NewIngestionPage() {
 
           {finished && !isSubmitting && items.length > 0 && (
             <ResultSummary
+              items={items}
               startedCount={startedCount}
               duplicateCount={duplicateCount}
               failedCount={failedCount}
+              cancelledCount={cancelledCount}
               onRetryFailed={() => void retryFailed()}
             />
           )}
@@ -430,7 +644,9 @@ export default function NewIngestionPage() {
               itemCount={items.length}
               mode={mode}
               hint={hint}
-              onStart={() => void handleStart()}
+              uploadedRatio={uploadedRatio}
+              onStart={requestStart}
+              onCancel={cancelUploads}
             />
 
             {finished && items.length > 0 && !isSubmitting && (
@@ -446,6 +662,20 @@ export default function NewIngestionPage() {
           </div>
         </div>
       </main>
+
+      <GuidedBatchDialog
+        open={showGuidedConfirm}
+        fileCount={items.length}
+        onOpenChange={setShowGuidedConfirm}
+        onConfirm={() => {
+          setShowGuidedConfirm(false);
+          void handleStart();
+        }}
+        onSwitchToAuto={() => {
+          setShowGuidedConfirm(false);
+          setMode("auto");
+        }}
+      />
     </div>
   );
 }

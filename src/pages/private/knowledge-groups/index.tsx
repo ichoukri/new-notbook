@@ -46,7 +46,15 @@ import {
   mapBackendKnowledgeGroupTree,
 } from "@/core/knowledge-groups";
 import { cn } from "@/lib/utils";
-import { collectGroupSubtreeIds, flattenGroupTree } from "./group-tree-utils";
+import {
+  collectDeletionOrder,
+  collectGroupSubtreeIds,
+  flattenGroupTree,
+} from "./group-tree-utils";
+import {
+  DeleteGroupDialog,
+  type DeleteGroupChoice,
+} from "./delete-group-dialog";
 
 const ROOT_GROUP = "__root__";
 
@@ -392,6 +400,9 @@ export default function KnowledgeGroupsPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<TKnowledgeGroupTreeNode | null>(null);
   const [initialParentId, setInitialParentId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<TKnowledgeGroupTreeNode | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -432,6 +443,13 @@ export default function KnowledgeGroupsPage() {
     [datasets],
   );
   const groupCount = useMemo(() => flattenGroupTree(tree).length, [tree]);
+  const groupsById = useMemo(
+    () =>
+      new Map(
+        flattenGroupTree(tree).map(({ group }) => [group.id, group] as const),
+      ),
+    [tree],
+  );
 
   const reload = () => setReloadKey((current) => current + 1);
   const openCreate = (parentId: string | null = null) => {
@@ -459,19 +477,57 @@ export default function KnowledgeGroupsPage() {
     reload();
   };
 
-  const deleteGroup = async (group: TKnowledgeGroupTreeNode) => {
-    if (!window.confirm(`Delete the knowledge group "${group.name}"?`)) return;
+  const runDeletion = async (
+    group: TKnowledgeGroupTreeNode,
+    choice: DeleteGroupChoice,
+  ) => {
+    setIsDeleting(true);
     try {
-      await backendApi.delete("/knowledge-groups", group.id);
-      toast.success("Knowledge group deleted.");
+      if (choice === "promote-children") {
+        // Lift each child to this group's own parent first, so the group is a
+        // leaf by the time it is deleted. _validate_parent rejects cycles, and
+        // moving up the tree can never create one.
+        for (const child of group.children) {
+          await backendApi.replace<
+            TBackendKnowledgeGroup,
+            TKnowledgeGroupUpdatePayload
+          >("/knowledge-groups", child.id, { parent_id: group.parentId });
+        }
+        await backendApi.delete("/knowledge-groups", group.id);
+        toast.success(
+          `Deleted “${group.name}” and moved ${group.children.length} child group(s) up a level.`,
+        );
+      } else if (choice === "subtree") {
+        // Leaves first — the API refuses to delete a group that still has
+        // children, so the order is what makes this work at all.
+        const ordered = collectDeletionOrder(group);
+        for (const node of ordered) {
+          await backendApi.delete("/knowledge-groups", node.id);
+        }
+        toast.success(
+          ordered.length === 1
+            ? "Knowledge group deleted."
+            : `Deleted “${group.name}” and ${ordered.length - 1} nested group(s).`,
+        );
+      } else {
+        await backendApi.delete("/knowledge-groups", group.id);
+        toast.success("Knowledge group deleted.");
+      }
+
+      setDeleteTarget(null);
       reload();
     } catch (deleteError) {
+      // A partial subtree deletion leaves the tree in a valid but changed
+      // state, so reload rather than assuming nothing happened.
       toast.error(
         getApiErrorMessage(
           deleteError,
-          "Could not delete this knowledge group. Move or delete its children first.",
+          "Could not delete this knowledge group.",
         ),
       );
+      reload();
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -561,7 +617,7 @@ export default function KnowledgeGroupsPage() {
                     setEditorOpen(true);
                   }}
                   onAddChild={(parent) => openCreate(parent.id)}
-                  onDelete={(target) => void deleteGroup(target)}
+                  onDelete={(target) => setDeleteTarget(target)}
                 />
               ))}
             </section>
@@ -580,6 +636,22 @@ export default function KnowledgeGroupsPage() {
           onSave={saveGroup}
         />
       )}
+
+      <DeleteGroupDialog
+        group={deleteTarget}
+        parentName={
+          deleteTarget?.parentId
+            ? (groupsById.get(deleteTarget.parentId)?.name ?? null)
+            : null
+        }
+        isDeleting={isDeleting}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeleteTarget(null);
+        }}
+        onConfirm={(choice) => {
+          if (deleteTarget) void runDeletion(deleteTarget, choice);
+        }}
+      />
     </div>
   );
 }

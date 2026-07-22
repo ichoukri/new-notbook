@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Copy, Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Layers3, Loader2, Sparkles } from "lucide-react";
 import { MarkdownContent } from "@/components/app/markdown";
 import { TableHtml } from "@/components/app/table-html";
 import { ContentTypeBadge } from "@/components/app/status-badge";
@@ -28,27 +28,42 @@ export function DocumentChunksTab({
   onToggleChunk: (chunkId: string) => void;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <table className="w-full">
+    <section className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_8px_30px_-24px_rgba(15,23,42,0.45)]">
+      <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <Layers3 className="size-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-gray-950">Stored chunks</h2>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            Expand a row to inspect summaries, source text, tables, and images.
+          </p>
+        </div>
+        <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold tabular-nums text-indigo-700">
+          {chunks.length.toLocaleString()} total
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[880px]">
         <thead>
-          <tr className="border-b border-gray-50">
+          <tr className="border-b border-gray-100 bg-gray-50/70">
             <th className="px-4 py-3 w-8" />
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               #
             </th>
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Type
             </th>
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Section
             </th>
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Page
             </th>
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Tokens
             </th>
-            <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">
+            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Embed Mode
             </th>
           </tr>
@@ -84,7 +99,8 @@ export function DocumentChunksTab({
           )}
         </tbody>
       </table>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -102,8 +118,8 @@ function ChunkRows({
       key={chunk.id}
       onClick={onToggle}
       className={cn(
-        "hover:bg-gray-50/50 cursor-pointer transition-colors",
-        isOpen && "bg-indigo-50/40",
+        "cursor-pointer transition-colors hover:bg-gray-50/80",
+        isOpen && "bg-indigo-50/60",
       )}
     >
       <td className="px-4 py-3.5 text-gray-400">
@@ -142,9 +158,9 @@ function ChunkRows({
     const imageUrls = getChunkImageUrls(chunk);
     const tables = getChunkTables(chunk);
     rows.push(
-      <tr key={`${chunk.id}-expanded`} className="bg-gray-50/40">
-        <td colSpan={7} className="px-6 py-4">
-          <div className="space-y-3">
+      <tr key={`${chunk.id}-expanded`} className="bg-slate-50/80">
+        <td colSpan={7} className="px-6 py-5">
+          <div className="space-y-5 rounded-xl border border-gray-200/70 bg-white p-5 shadow-sm">
             {tables.length > 0 && (
               <div>
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
@@ -209,7 +225,7 @@ function ChunkRows({
                     Copy
                   </button>
                 </div>
-                <div className="rounded-lg border border-gray-200 bg-white p-3 max-h-96 overflow-y-auto">
+                <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 bg-slate-50/70 p-4">
                   <MarkdownContent content={chunk.textContent} className="text-xs" />
                 </div>
               </div>

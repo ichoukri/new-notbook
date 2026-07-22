@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TKnowledgeGroupTreeNode } from "@/core/knowledge-groups";
-import { collectGroupSubtreeIds, flattenGroupTree } from "./group-tree-utils";
+import {
+  collectDeletionOrder,
+  collectGroupSubtreeIds,
+  countDescendantGroups,
+  flattenGroupTree,
+} from "./group-tree-utils";
 
 function group(
   id: string,
@@ -44,5 +49,51 @@ describe("knowledge group tree utilities", () => {
       "drive",
       "motor",
     ]);
+  });
+
+  it("orders a subtree deletion from the leaves inward", () => {
+    // The API refuses to delete a group that still has children, so this order
+    // is what makes a cascade delete possible at all.
+    const tree = group("plans", [
+      group("drive", [group("motor")]),
+      group("layouts"),
+    ]);
+
+    expect(collectDeletionOrder(tree).map((node) => node.id)).toEqual([
+      "motor",
+      "drive",
+      "layouts",
+      "plans",
+    ]);
+  });
+
+  it("never lists a group before one of its descendants", () => {
+    const tree = group("root", [
+      group("x", [group("x1"), group("x2", [group("x2a")])]),
+      group("y"),
+    ]);
+    const order = collectDeletionOrder(tree).map((node) => node.id);
+    const at = (id: string) => order.indexOf(id);
+
+    expect(at("x1")).toBeLessThan(at("x"));
+    expect(at("x2a")).toBeLessThan(at("x2"));
+    expect(at("x2")).toBeLessThan(at("x"));
+    expect(order.at(-1)).toBe("root");
+  });
+
+  it("returns just the group when it has no children", () => {
+    expect(collectDeletionOrder(group("solo")).map((n) => n.id)).toEqual([
+      "solo",
+    ]);
+  });
+
+  it("counts descendants at every level, excluding the group itself", () => {
+    const tree = group("plans", [
+      group("drive", [group("motor")]),
+      group("layouts"),
+    ]);
+
+    expect(countDescendantGroups(tree)).toBe(3);
+    expect(countDescendantGroups(group("solo"))).toBe(0);
   });
 });

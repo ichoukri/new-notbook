@@ -121,6 +121,24 @@ export type TRetrievalSearchHit = {
   sourceRelativePaths: string[];
 };
 
+/** A highlightable box on a PDF page, as top-left-origin page fractions (0..1). */
+export type TPdfRegion = {
+  page: number;
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+  /** Character range this box covers within its chunk's text, when known. */
+  start?: number;
+  end?: number;
+  /**
+   * The chunk's text was edited after the box was captured, so it no longer
+   * describes the text exactly. Rendered as an approximate hint rather than
+   * exact evidence.
+   */
+  stale?: boolean;
+};
+
 export type TBackendGroundedCitation = {
   number: number;
   chunk_id: string;
@@ -131,6 +149,7 @@ export type TBackendGroundedCitation = {
   source_url?: string | null;
   source_relative_path?: string | null;
   source_relative_paths?: string[] | null;
+  regions?: TPdfRegion[] | null;
 };
 
 export type TGroundedCitation = {
@@ -142,6 +161,7 @@ export type TGroundedCitation = {
   excerpt: string;
   sourceUrl?: string | null;
   sourceRelativePaths: string[];
+  regions: TPdfRegion[];
 };
 
 export type TRetrievalAbstentionReason =
@@ -188,11 +208,19 @@ export type TKnowledgeChatRequest = {
 export type TBackendKnowledgeChatResponse = TBackendGroundedAnswerResponse & {
   message: string;
   resolved_query: string;
+  needs_clarification?: boolean;
+  clarification_question?: string | null;
+  equipment_tags?: string[];
+  routed_document_types?: string[];
 };
 
 export type TKnowledgeChatResponse = TGroundedAnswerResponse & {
   message: string;
   resolvedQuery: string;
+  needsClarification: boolean;
+  clarificationQuestion: string | null;
+  equipmentTags: string[];
+  routedDocumentTypes: string[];
 };
 
 function getRecord(value: unknown): Record<string, unknown> | null {
@@ -364,6 +392,7 @@ export function mapBackendGroundedAnswerResponse(
         citation.source_relative_paths,
         citation.source_relative_path,
       ),
+      regions: citation.regions ?? [],
     })),
     hits: response.hits.map(mapBackendRetrievalSearchHit),
     retrievalDebug: response.retrieval_debug
@@ -379,5 +408,9 @@ export function mapBackendKnowledgeChatResponse(
     ...mapBackendGroundedAnswerResponse(response),
     message: response.message,
     resolvedQuery: response.resolved_query,
+    needsClarification: response.needs_clarification ?? false,
+    clarificationQuestion: response.clarification_question ?? null,
+    equipmentTags: response.equipment_tags ?? [],
+    routedDocumentTypes: response.routed_document_types ?? [],
   };
 }

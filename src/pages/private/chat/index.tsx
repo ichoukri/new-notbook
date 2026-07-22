@@ -5,10 +5,12 @@ import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
   Bot,
+  CircleHelp,
   Database,
   ExternalLink,
   FileText,
   FolderTree,
+  Highlighter,
   LoaderCircle,
   MessageSquareText,
   RotateCcw,
@@ -42,11 +44,13 @@ import {
 } from "@/core/knowledge-groups";
 import {
   type TBackendKnowledgeChatResponse,
+  type TGroundedCitation,
   type TKnowledgeChatRequest,
   type TKnowledgeChatResponse,
   mapBackendKnowledgeChatResponse,
 } from "@/core/retrieval";
 import { cn } from "@/lib/utils";
+import { CitationSourceDialog } from "./citation-source-dialog";
 import {
   buildKnowledgeChatHistory,
   getCitationFolder,
@@ -76,9 +80,11 @@ function messageId(role: TChatMessage["role"]): string {
 function KnowledgeSourceList({
   response,
   onOpenDocument,
+  onViewSource,
 }: {
   response: TKnowledgeChatResponse;
   onOpenDocument: (documentId: string) => void;
+  onViewSource: (citation: TGroundedCitation) => void;
 }) {
   if (response.abstained || response.citations.length === 0) return null;
 
@@ -90,7 +96,7 @@ function KnowledgeSourceList({
           Sources
         </h3>
         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-          {response.citations.length} verified
+          {response.citations.length} cited
         </span>
       </div>
 
@@ -128,15 +134,28 @@ function KnowledgeSourceList({
               <span>
                 Page {citation.pageNumber ?? "—"} · Evidence {citation.number}
               </span>
-              <button
-                type="button"
-                onClick={() => onOpenDocument(citation.documentId)}
-                className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700"
-              >
-                <FileText className="size-3" />
-                Open file
-                <ExternalLink className="size-3" />
-              </button>
+              <div className="flex items-center gap-3">
+                {citation.regions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onViewSource(citation)}
+                    className="inline-flex items-center gap-1 font-semibold text-amber-600 hover:text-amber-700"
+                    title="Open the PDF with this evidence highlighted"
+                  >
+                    <Highlighter className="size-3" />
+                    View source
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onOpenDocument(citation.documentId)}
+                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  <FileText className="size-3" />
+                  Open file
+                  <ExternalLink className="size-3" />
+                </button>
+              </div>
             </div>
           </article>
         ))}
@@ -148,12 +167,15 @@ function KnowledgeSourceList({
 function ChatMessage({
   message,
   onOpenDocument,
+  onViewSource,
 }: {
   message: TChatMessage;
   onOpenDocument: (documentId: string) => void;
+  onViewSource: (citation: TGroundedCitation) => void;
 }) {
   const isAssistant = message.role === "assistant";
   const abstained = Boolean(message.response?.abstained);
+  const needsClarification = Boolean(message.response?.needsClarification);
 
   return (
     <div
@@ -172,7 +194,9 @@ function ChatMessage({
         className={cn(
           "max-w-[88%] rounded-2xl px-4 py-3 shadow-sm lg:max-w-[78%]",
           isAssistant
-            ? abstained
+            ? needsClarification
+              ? "border border-blue-200 bg-blue-50"
+              : abstained
               ? "border border-amber-200 bg-amber-50"
               : "border border-gray-200 bg-white"
             : "bg-indigo-600 text-white",
@@ -180,7 +204,9 @@ function ChatMessage({
       >
         {isAssistant && (
           <div className="mb-2 flex items-center gap-2">
-            {abstained ? (
+            {needsClarification ? (
+              <CircleHelp className="size-3.5 text-blue-600" />
+            ) : abstained ? (
               <AlertTriangle className="size-3.5 text-amber-600" />
             ) : (
               <Sparkles className="size-3.5 text-indigo-600" />
@@ -188,10 +214,18 @@ function ChatMessage({
             <span
               className={cn(
                 "text-[10px] font-bold uppercase tracking-[0.12em]",
-                abstained ? "text-amber-700" : "text-indigo-600",
+                needsClarification
+                  ? "text-blue-700"
+                  : abstained
+                    ? "text-amber-700"
+                    : "text-indigo-600",
               )}
             >
-              {abstained ? "Verified abstention" : "Grinding knowledge agent"}
+              {needsClarification
+                ? "Clarification needed"
+                : abstained
+                  ? "Verified abstention"
+                  : "Maintenance knowledge agent"}
             </span>
           </div>
         )}
@@ -215,6 +249,7 @@ function ChatMessage({
           <KnowledgeSourceList
             response={message.response}
             onOpenDocument={onOpenDocument}
+            onViewSource={onViewSource}
           />
         )}
       </div>
@@ -241,6 +276,8 @@ export default function KnowledgeChatPage() {
   const [loadingKnowledge, setLoadingKnowledge] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [sourceCitation, setSourceCitation] =
+    useState<TGroundedCitation | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,10 +418,10 @@ export default function KnowledgeChatPage() {
             </div>
             <div>
               <h1 className="text-sm font-semibold text-gray-900">
-                Grinding Knowledge Agent
+                Tizert Maintenance Agent
               </h1>
               <p className="text-xs text-gray-500">
-                Answers are restricted to reviewed knowledge and verified sources.
+                Answers are restricted to reviewed knowledge and cited sources.
               </p>
             </div>
           </div>
@@ -451,11 +488,11 @@ export default function KnowledgeChatPage() {
                 <Bot className="size-7" />
               </div>
               <h2 className="mt-5 text-xl font-semibold text-gray-900">
-                Ask about the Grinding knowledge base
+                Ask the selected maintenance knowledge base
               </h2>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-500">
                 Ask about equipment, operating procedures, maintenance, safety,
-                components, or relationships. Every supported answer ends with the
+                components, or relationships. Every supported answer links to its
                 exact source file and folder.
               </p>
               <div className="mt-7 grid gap-3 text-left md:grid-cols-3">
@@ -488,6 +525,7 @@ export default function KnowledgeChatPage() {
               key={message.id}
               message={message}
               onOpenDocument={(documentId) => navigate(`/documents/${documentId}`)}
+              onViewSource={setSourceCitation}
             />
           ))}
 
@@ -560,6 +598,13 @@ export default function KnowledgeChatPage() {
           </div>
         </form>
       </footer>
+
+      <CitationSourceDialog
+        citation={sourceCitation}
+        onOpenChange={(open) => {
+          if (!open) setSourceCitation(null);
+        }}
+      />
     </div>
   );
 }

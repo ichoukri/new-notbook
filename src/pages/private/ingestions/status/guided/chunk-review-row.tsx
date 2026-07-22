@@ -45,6 +45,9 @@ type ChunkReviewRowProps = {
   selectable: boolean;
   isSelected: boolean;
   onToggleSelect: (serverId: string) => void;
+  /** Set when the source pane is open: focusing a row highlights it in the PDF. */
+  onFocus?: (rowKey: string) => void;
+  isFocused?: boolean;
 };
 
 export function ChunkReviewRow({
@@ -71,6 +74,8 @@ export function ChunkReviewRow({
   selectable,
   isSelected,
   onToggleSelect,
+  onFocus,
+  isFocused = false,
 }: ChunkReviewRowProps) {
   const isDeleted = row.status === "deleted";
   const canAct = row.serverId != null && !isDeleted;
@@ -91,12 +96,19 @@ export function ChunkReviewRow({
   return (
     <Fragment>
       <div
+        // Keyed by row, so staged rows (which have no server id yet) are
+        // focusable too.
+        onClick={onFocus ? () => onFocus(row.key) : undefined}
         className={cn(
           "group px-5 py-4",
+          onFocus && "cursor-pointer",
           (isEditing || isSplitting) &&
             "rounded-xl bg-violet-50/40 ring-1 ring-violet-100",
           isDeleted && "opacity-60",
           isSelected && !isDeleted && "bg-violet-50/40",
+          // Focused = shown in the PDF pane. Distinct from checkbox selection,
+          // which drives bulk delete.
+          isFocused && !isDeleted && "bg-amber-50/60 ring-1 ring-amber-200",
           (row.status === "added" || row.status === "merged") &&
             "border-l-2 border-emerald-300",
           row.status === "edited" && "border-l-2 border-violet-300",

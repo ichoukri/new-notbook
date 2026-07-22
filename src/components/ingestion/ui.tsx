@@ -73,14 +73,18 @@ export function IngestionShell({
   title,
   children,
   center = false,
+  banner,
 }: {
   title: string;
   children: ReactNode;
   center?: boolean;
+  /** Full-width slot between the topbar and the content, e.g. a queue bar. */
+  banner?: ReactNode;
 }) {
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Topbar title={title} breadcrumbs={[{ label: "Ingestions" }]} />
+      {banner}
       <main className="flex-1 overflow-auto bg-gradient-to-b from-gray-50/80 via-gray-50/30 to-white">
         {center ? (
           <div className="min-h-full flex items-center justify-center px-4 py-10">

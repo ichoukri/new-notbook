@@ -17,6 +17,34 @@ export function flattenGroupTree(
   return flattened;
 }
 
+/**
+ * Every group under `group`, deepest first, with `group` itself last.
+ *
+ * Deletion order matters: the API refuses to delete a group that still has
+ * children, so a subtree can only be removed from the leaves inward.
+ */
+export function collectDeletionOrder(
+  group: TKnowledgeGroupTreeNode,
+): TKnowledgeGroupTreeNode[] {
+  const ordered: TKnowledgeGroupTreeNode[] = [];
+  const visit = (node: TKnowledgeGroupTreeNode) => {
+    for (const child of node.children) visit(child);
+    ordered.push(node);
+  };
+  visit(group);
+  return ordered;
+}
+
+/** Total groups beneath `group`, excluding itself. */
+export function countDescendantGroups(
+  group: TKnowledgeGroupTreeNode,
+): number {
+  return group.children.reduce(
+    (total, child) => total + 1 + countDescendantGroups(child),
+    0,
+  );
+}
+
 export function collectGroupSubtreeIds(
   groups: TKnowledgeGroupTreeNode[],
   groupId: string,

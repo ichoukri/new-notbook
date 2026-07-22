@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -23,6 +24,7 @@ import {
   getEntityName,
   type TGraphErrorState,
 } from "./graph-explorer-utils";
+import { NeighborhoodGraph } from "./neighborhood-graph";
 
 type NeighborhoodPanelProps = {
   selectedEntity: TGraphEntity | null;
@@ -106,6 +108,8 @@ export function NeighborhoodPanel({
   onMerge,
   onExclude,
 }: NeighborhoodPanelProps) {
+  const [view, setView] = useState<"graph" | "list">("graph");
+
   if (!selectedEntity) {
     return (
       <section className="flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white">
@@ -232,6 +236,25 @@ export function NeighborhoodPanel({
                 </button>
               ))}
             </div>
+            <div className="flex rounded-lg bg-gray-100 p-0.5">
+              {(["graph", "list"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-label={value === "graph" ? "Graph view" : "List view"}
+                  aria-pressed={view === value}
+                  onClick={() => setView(value)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                    view === value
+                      ? "bg-white text-indigo-700 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700",
+                  )}
+                >
+                  {value === "graph" ? "Graph" : "List"}
+                </button>
+              ))}
+            </div>
           </div>
           {neighborhood && (
             <p className="text-[11px] text-gray-500">
@@ -272,100 +295,110 @@ export function NeighborhoodPanel({
         </div>
       ) : neighborhood ? (
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] divide-x divide-gray-100 overflow-hidden">
-          <div className="min-h-0 overflow-y-auto p-4">
+          <div className="flex min-h-0 flex-col overflow-hidden">
             {neighborhood.truncated && (
-              <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 size-3.5 flex-shrink-0" />
                 This view reached its safety limit. Narrow the scope or use one hop
                 to inspect a smaller neighborhood.
               </div>
             )}
 
-            <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Connected entities
-              </h3>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {neighborhood.nodes.map((node) => (
-                  <button
-                    key={node.canonicalId}
-                    type="button"
-                    onClick={() => onSelectEntity(node.canonicalId)}
-                    className={cn(
-                      "rounded-xl border px-3 py-2 text-left transition-colors",
-                      node.canonicalId === neighborhood.centerId
-                        ? "border-indigo-200 bg-indigo-50"
-                        : "border-gray-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/50",
-                    )}
-                  >
-                    <span className="block max-w-48 truncate text-xs font-semibold text-gray-800">
-                      {node.name}
-                    </span>
-                    <span className="mt-0.5 block text-[10px] text-gray-500">
-                      {formatGraphLabel(node.entityType)} ·{" "}
-                      {node.supportingDocumentIds.length} docs
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Evidence-backed relations
-              </h3>
-              <div className="mt-2 space-y-2">
-                {neighborhood.edges.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-gray-200 p-5 text-center text-xs text-gray-500">
-                    No relationships were found inside this bounded scope.
+            {view === "graph" ? (
+              <NeighborhoodGraph
+                key={`${neighborhood.centerId}:${neighborhood.depth}`}
+                neighborhood={neighborhood}
+                onSelectEntity={onSelectEntity}
+              />
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    Connected entities
+                  </h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {neighborhood.nodes.map((node) => (
+                      <button
+                        key={node.canonicalId}
+                        type="button"
+                        onClick={() => onSelectEntity(node.canonicalId)}
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-left transition-colors",
+                          node.canonicalId === neighborhood.centerId
+                            ? "border-indigo-200 bg-indigo-50"
+                            : "border-gray-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/50",
+                        )}
+                      >
+                        <span className="block max-w-48 truncate text-xs font-semibold text-gray-800">
+                          {node.name}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-gray-500">
+                          {formatGraphLabel(node.entityType)} ·{" "}
+                          {node.supportingDocumentIds.length} docs
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                )}
-                {neighborhood.edges.map((edge) => {
-                  const edgeCitations = edge.citationIds
-                    .map((id) => citationsById.get(id))
-                    .filter((citation): citation is TGraphCitation => Boolean(citation));
-                  return (
-                    <article
-                      key={edge.id}
-                      className="rounded-xl border border-gray-200 bg-gray-50/60 p-3"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <button
-                          type="button"
-                          className="max-w-52 truncate font-semibold text-gray-800 hover:text-indigo-700"
-                          onClick={() => onSelectEntity(edge.sourceCanonicalId)}
-                        >
-                          {getEntityName(edge.sourceCanonicalId, neighborhood.nodes)}
-                        </button>
-                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                          {formatGraphLabel(edge.relationType)}
-                        </span>
-                        <button
-                          type="button"
-                          className="max-w-52 truncate font-semibold text-gray-800 hover:text-indigo-700"
-                          onClick={() => onSelectEntity(edge.targetCanonicalId)}
-                        >
-                          {getEntityName(edge.targetCanonicalId, neighborhood.nodes)}
-                        </button>
-                        <span className="ml-auto text-[10px] text-gray-500">
-                          {formatConfidence(edge.confidence)}
-                        </span>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    Evidence-backed relations
+                  </h3>
+                  <div className="mt-2 space-y-2">
+                    {neighborhood.edges.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-gray-200 p-5 text-center text-xs text-gray-500">
+                        No relationships were found inside this bounded scope.
                       </div>
-                      {edge.description && (
-                        <p className="mt-2 text-xs leading-relaxed text-gray-600">
-                          {edge.description}
-                        </p>
-                      )}
-                      <div className="mt-2 flex items-center gap-1.5 text-[10px] text-gray-500">
-                        <Quote className="size-3" />
-                        {edgeCitations.length} source citation
-                        {edgeCitations.length === 1 ? "" : "s"}
-                      </div>
-                    </article>
-                  );
-                })}
+                    )}
+                    {neighborhood.edges.map((edge) => {
+                      const edgeCitations = edge.citationIds
+                        .map((id) => citationsById.get(id))
+                        .filter((citation): citation is TGraphCitation => Boolean(citation));
+                      return (
+                        <article
+                          key={edge.id}
+                          className="rounded-xl border border-gray-200 bg-gray-50/60 p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <button
+                              type="button"
+                              className="max-w-52 truncate font-semibold text-gray-800 hover:text-indigo-700"
+                              onClick={() => onSelectEntity(edge.sourceCanonicalId)}
+                            >
+                              {getEntityName(edge.sourceCanonicalId, neighborhood.nodes)}
+                            </button>
+                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                              {formatGraphLabel(edge.relationType)}
+                            </span>
+                            <button
+                              type="button"
+                              className="max-w-52 truncate font-semibold text-gray-800 hover:text-indigo-700"
+                              onClick={() => onSelectEntity(edge.targetCanonicalId)}
+                            >
+                              {getEntityName(edge.targetCanonicalId, neighborhood.nodes)}
+                            </button>
+                            <span className="ml-auto text-[10px] text-gray-500">
+                              {formatConfidence(edge.confidence)}
+                            </span>
+                          </div>
+                          {edge.description && (
+                            <p className="mt-2 text-xs leading-relaxed text-gray-600">
+                              {edge.description}
+                            </p>
+                          )}
+                          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-gray-500">
+                            <Quote className="size-3" />
+                            {edgeCitations.length} source citation
+                            {edgeCitations.length === 1 ? "" : "s"}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <aside className="min-h-0 overflow-y-auto bg-gray-50/50 p-4">

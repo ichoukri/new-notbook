@@ -126,7 +126,7 @@ export function useIngestionStatusData({
     let disposed = false;
     const stream = new EventSource(
       buildDocumentStatusStreamUrl({
-        documentId,
+        documentIds: [documentId],
       }),
       { withCredentials: true },
     );

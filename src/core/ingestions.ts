@@ -1,5 +1,6 @@
 import { env } from "@/config/env";
 import { mapSourceRelativePaths } from "@/core/source-provenance";
+import type { TPdfRegion } from "@/core/retrieval";
 
 export type TDocumentMode = "auto" | "guided";
 
@@ -151,6 +152,7 @@ export type TChunkEditOperation =
   | {
       op: "split";
       chunk_id: string;
+      // Empty text is valid when that segment owns at least one image.
       segments: string[];
       // For each source-chunk image (in imageUrls order), the index of the
       // resulting segment it attaches to. Omit → all images go to segment 0.
@@ -551,12 +553,41 @@ export function isAwaitingApproval(document: TIngestionDocument): boolean {
   return getAwaitingApprovalStage(document) !== null;
 }
 
+// Mirrors the backend's TERMINAL_STATUSES: nothing further happens to a
+// document in one of these states without an explicit user action.
+const _TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+export function isTerminalStatus(status: string): boolean {
+  return _TERMINAL_STATUSES.has(status);
+}
+
+/**
+ * Whether a document is moving through (or about to enter) the pipeline, and so
+ * may still stop at a guided-mode approval gate.
+ *
+ * This is what decides review-queue membership. A duplicate the backend
+ * returned untouched because it was already in flight is just as likely to need
+ * a decision as a freshly queued upload — the distinction that matters is the
+ * document's status, not how the client came to hold it.
+ */
+export function isLiveInPipeline(status: string): boolean {
+  return !isTerminalStatus(status);
+}
+
 // The final guided-mode gate is handled separately from the stage-approval
 // flow: it has its own ``/metadata`` endpoint (save + finalize) rather than
 // a ``/stages/{stage}/approve`` call.
 export function isMetadataReview(document: TIngestionDocument): boolean {
   return document.processingStatus === "metadata_awaiting_approval";
 }
+
+/**
+ * Most approvals a single guided document can require: one per stage gate plus
+ * the final metadata gate. Derived from the stage map so it cannot drift when
+ * stages are added or removed.
+ */
+export const GUIDED_GATES_PER_DOCUMENT =
+  Object.keys(_AWAITING_APPROVAL_STAGE_MAP).length + 1;
 
 export function shouldLoadIngestionChunksForStatus(status: string): boolean {
   switch (status) {
@@ -587,6 +618,41 @@ export function shouldLoadIngestionChunks(document: TIngestionDocument): boolean
  * Returns an empty array when no images are present or when
  * ``originalContent`` has an unexpected shape.
  */
+/**
+ * Highlight regions stored on a chunk, or an empty list.
+ *
+ * Regions live under ``chunkMetadata.regions`` as top-left-origin page
+ * fractions. Chunks ingested before coordinates were captured simply have none.
+ */
+export function getChunkRegions(chunk: TIngestionChunk): TPdfRegion[] {
+  const raw = chunk.chunkMetadata?.regions;
+  if (!Array.isArray(raw)) return [];
+  const regions: TPdfRegion[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const region = entry as Record<string, unknown>;
+    if (
+      typeof region.page === "number" &&
+      typeof region.l === "number" &&
+      typeof region.t === "number" &&
+      typeof region.r === "number" &&
+      typeof region.b === "number"
+    ) {
+      regions.push({
+        page: region.page,
+        l: region.l,
+        t: region.t,
+        r: region.r,
+        b: region.b,
+        ...(typeof region.start === "number" ? { start: region.start } : {}),
+        ...(typeof region.end === "number" ? { end: region.end } : {}),
+        ...(region.stale === true ? { stale: true } : {}),
+      });
+    }
+  }
+  return regions;
+}
+
 export function getChunkImageUrls(chunk: TIngestionChunk): string[] {
   const oc = chunk.originalContent;
   if (!oc || typeof oc !== "object") return [];
@@ -684,12 +750,43 @@ export function getDocumentStatusLabel(status: string): string {
   }
 }
 
+/**
+ * Most document ids to put directly in the stream URL.
+ *
+ * A UUID costs ~37 characters once comma-separated, and proxies commonly cap a
+ * request line around 4–8 KB. Past this many, the roster is registered with
+ * POST /documents/stream/subscriptions and the stream carries a short token
+ * instead, which keeps filtering exact without growing the URL.
+ */
+export const MAX_STREAMED_DOCUMENT_IDS = 60;
+
+export type TBackendStreamSubscription = {
+  subscription: string;
+  document_count: number;
+  expires_in: number;
+};
+
+/** Whether a roster is too large to pass on the URL and needs a token. */
+export function needsStreamSubscription(documentIds: string[]): boolean {
+  return documentIds.filter(Boolean).length > MAX_STREAMED_DOCUMENT_IDS;
+}
+
+// The backend accepts a comma-separated ``document_ids`` filter, so one stream
+// can back a whole batch instead of one connection per document. Large rosters
+// pass a ``subscription`` token naming the same set.
 export function buildDocumentStatusStreamUrl(params: {
-  documentId: string;
+  documentIds: string[];
   datasetId?: string | null;
+  subscription?: string | null;
 }): string {
   const searchParams = new URLSearchParams();
-  searchParams.set("document_ids", params.documentId);
+  const documentIds = params.documentIds.filter(Boolean);
+
+  if (params.subscription) {
+    searchParams.set("subscription", params.subscription);
+  } else if (documentIds.length > 0) {
+    searchParams.set("document_ids", documentIds.join(","));
+  }
   if (params.datasetId) {
     searchParams.set("dataset_id", params.datasetId);
   }

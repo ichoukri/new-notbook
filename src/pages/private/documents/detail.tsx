@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import {
+  Braces,
+  Eye,
+  LayoutDashboard,
+  Layers3,
+  ScrollText,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +40,7 @@ import {
 } from "@/core/ingestions";
 import { useGlobalStore } from "@/core/global-store/index";
 import { DocumentChunksTab } from "./detail-components/document-chunks-tab";
+import { DocumentPreviewTab } from "./detail-components/document-preview-tab";
 import { DocumentDeleteDialog } from "./detail-components/document-delete-dialog";
 import {
   DocumentFailureAlert,
@@ -65,6 +74,7 @@ export default function DocumentDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     let cancelled = false;
@@ -339,14 +349,14 @@ export default function DocumentDetailPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-auto">
+    <div className="flex flex-1 flex-col overflow-hidden bg-[#f5f6fa]">
       <Topbar
         title={document.filename}
         breadcrumbs={[{ label: "Documents", path: "/documents" }]}
       />
 
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-[1400px] mx-auto w-full px-8 py-7 space-y-5">
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1480px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <DocumentHeader
             document={document}
             datasetName={datasetName}
@@ -358,34 +368,60 @@ export default function DocumentDetailPage() {
             onDownload={() => void handleDownload()}
             onRetry={() => void handleRetry()}
             onDelete={() => setDeleteOpen(true)}
+            onOpenDataset={() => {
+              const datasetId = getDocumentDatasetId(document);
+              if (datasetId) navigate(`/datasets/${datasetId}`);
+            }}
           />
 
-          <DocumentFailureAlert
-            message={failureMessage}
-            stage={failureStage}
-            traceback={failureTraceback}
-          />
+          <div className="mt-4">
+            <DocumentFailureAlert
+              message={failureMessage}
+              stage={failureStage}
+              traceback={failureTraceback}
+            />
+          </div>
 
-          <Tabs defaultValue="overview">
-            <TabsList className="bg-white border border-gray-100 shadow-sm rounded-xl p-1">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="chunks">Chunks ({chunkCount})</TabsTrigger>
-              <TabsTrigger value="retrieval">Retrieval Preview</TabsTrigger>
-              <TabsTrigger value="metadata">Metadata</TabsTrigger>
-              <TabsTrigger value="logs">Logs</TabsTrigger>
-            </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-5 gap-0">
+            <div className="sticky top-0 z-10 -mx-1 overflow-x-auto border-b border-gray-200/80 bg-[#f5f6fa]/95 px-1 backdrop-blur-md">
+              <TabsList
+                variant="line"
+                aria-label="Document sections"
+                className="h-14 w-max min-w-full justify-start gap-1 bg-transparent p-0"
+              >
+                <DocumentTab value="overview" icon={LayoutDashboard} label="Overview" />
+                <DocumentTab value="preview" icon={Eye} label="Source preview" />
+                <DocumentTab
+                  value="chunks"
+                  icon={Layers3}
+                  label="Chunks"
+                  count={chunkCount}
+                />
+                <DocumentTab value="retrieval" icon={Search} label="Test retrieval" />
+                <DocumentTab value="metadata" icon={Braces} label="Metadata" />
+                <DocumentTab value="logs" icon={ScrollText} label="Activity" />
+              </TabsList>
+            </div>
 
-            <TabsContent value="overview" className="mt-4">
+            <TabsContent value="overview" className="mt-5">
               <DocumentOverviewTab
                 document={document}
                 pageCount={pageCount}
                 chunkCount={chunkCount}
                 contentTypeCounts={contentTypeCounts}
                 previewText={previewText}
+                metrics={metrics}
+                isLoadingChunks={isLoadingChunks}
+                onOpenPreview={() => setActiveTab("preview")}
+                onOpenChunks={() => setActiveTab("chunks")}
               />
             </TabsContent>
 
-            <TabsContent value="chunks" className="mt-4">
+            <TabsContent value="preview" className="mt-5">
+              <DocumentPreviewTab document={document} chunks={chunks} />
+            </TabsContent>
+
+            <TabsContent value="chunks" className="mt-5">
               <DocumentChunksTab
                 chunks={chunks}
                 expandedChunks={expandedChunks}
@@ -394,7 +430,7 @@ export default function DocumentDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="retrieval" className="mt-4">
+            <TabsContent value="retrieval" className="mt-5">
               <DocumentRetrievalTab
                 query={query}
                 searchHits={searchHits}
@@ -404,7 +440,7 @@ export default function DocumentDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="metadata" className="mt-4">
+            <TabsContent value="metadata" className="mt-5">
               <DocumentMetadataTab
                 document={document}
                 pageCount={pageCount}
@@ -413,7 +449,7 @@ export default function DocumentDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="logs" className="mt-4">
+            <TabsContent value="logs" className="mt-5">
               <DocumentLogsTab logs={logs} />
             </TabsContent>
           </Tabs>
@@ -430,5 +466,32 @@ export default function DocumentDetailPage() {
         onDelete={() => void handleDelete()}
       />
     </div>
+  );
+}
+
+function DocumentTab({
+  value,
+  icon: Icon,
+  label,
+  count,
+}: {
+  value: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <TabsTrigger
+      value={value}
+      className="group h-full flex-none gap-2 rounded-none px-4 text-[13px] font-semibold text-gray-500 after:bottom-0 after:h-0.5 after:bg-indigo-600 hover:text-gray-900 data-[state=active]:text-indigo-700"
+    >
+      <Icon className="size-4" />
+      {label}
+      {typeof count === "number" && (
+        <span className="rounded-full bg-gray-200/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-gray-600 group-data-[state=active]:bg-indigo-100 group-data-[state=active]:text-indigo-700">
+          {count.toLocaleString()}
+        </span>
+      )}
+    </TabsTrigger>
   );
 }

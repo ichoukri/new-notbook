@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TIngestionChunk } from "@/core/ingestions";
 import {
   buildChunkPreview,
+  buildChunkSplitPlan,
   buildSplitBlocks,
   splitIntoBlocks,
   splitTextKeepingTables,
@@ -112,6 +113,19 @@ describe("guided chunk preview helpers", () => {
     ]);
   });
 
+  it("builds an image-only output segment at an image boundary", () => {
+    const blocks = buildSplitBlocks("Caption", [
+      "/img/a.png",
+      "/img/b.png",
+      "/img/c.png",
+    ]);
+
+    expect(buildChunkSplitPlan(blocks, new Set([2]))).toEqual({
+      segments: ["Caption", ""],
+      imageSegments: [0, 0, 1],
+    });
+  });
+
   it("assigns split images to their target segment in the preview", () => {
     const chunk: TIngestionChunk = {
       ...baseChunk("chunk-1", 0, "A\n\nB"),
@@ -131,5 +145,31 @@ describe("guided chunk preview helpers", () => {
     );
     expect(preview.map((row) => row.imageUrls)).toEqual([[], ["/img/x.png"]]);
     expect(preview[1].contentTypes).toEqual(["text", "image"]);
+  });
+
+  it("previews an image-only split segment without labelling it as text", () => {
+    const chunk: TIngestionChunk = {
+      ...baseChunk("chunk-1", 0, "A"),
+      originalContent: { text: "A", images: ["/img/x.png"] },
+    };
+    const preview = buildChunkPreview(
+      [chunk],
+      [
+        {
+          op: "split",
+          chunk_id: "chunk-1",
+          segments: ["A", ""],
+          image_segments: [1],
+        },
+      ],
+      false,
+    );
+
+    expect(preview.map((row) => row.contentTypes)).toEqual([
+      ["text"],
+      ["image"],
+    ]);
+    expect(preview[1].imageUrls).toEqual(["/img/x.png"]);
+    expect(preview[1].charCount).toBe(0);
   });
 });

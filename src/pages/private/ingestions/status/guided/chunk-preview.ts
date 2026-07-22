@@ -2,7 +2,9 @@ import {
   type TChunkEditOperation,
   type TIngestionChunk,
   getChunkImageUrls,
+  getChunkRegions,
 } from "@/core/ingestions";
+import type { TPdfRegion } from "@/core/retrieval";
 
 export type PreviewStatus =
   | "unchanged"
@@ -21,6 +23,17 @@ export type PreviewChunk = {
   contentTypes: string[];
   imageUrls: string[];
   content: string;
+  /**
+   * Where this row sits in the source PDF.
+   *
+   * Regions are recomputed by the backend when edits are applied, so for a
+   * staged row these are the *parent's* boxes and only approximate the result —
+   * ``regionsArePending`` says so, and the viewer renders them accordingly.
+   * Duplicating the backend's slicing here to preview exact boxes would mean
+   * two implementations that must stay byte-identical; they would drift.
+   */
+  regions: TPdfRegion[];
+  regionsArePending: boolean;
 };
 
 export const PREVIEW_STATUS_BADGE: Record<
@@ -115,6 +128,66 @@ export function buildSplitBlocks(
   return blocks;
 }
 
+export type ChunkSplitPlan = {
+  segments: string[];
+  imageSegments?: number[];
+};
+
+/** Build one output segment per contiguous group selected in the split UI. */
+export function buildChunkSplitPlan(
+  blocks: SplitBlock[],
+  splitAfter: Iterable<number>,
+): ChunkSplitPlan | null {
+  const cuts = [...new Set(splitAfter)]
+    .filter(
+      (blockIndex) =>
+        Number.isInteger(blockIndex) &&
+        blockIndex >= 0 &&
+        blockIndex < blocks.length - 1,
+    )
+    .sort((a, b) => a - b);
+  if (cuts.length === 0) return null;
+
+  const groups: SplitBlock[][] = [];
+  let start = 0;
+  for (const cut of cuts) {
+    groups.push(blocks.slice(start, cut + 1));
+    start = cut + 1;
+  }
+  groups.push(blocks.slice(start));
+
+  const segments = groups.map((group) =>
+    group
+      .filter((block) => block.kind === "text")
+      .map((block) => block.text)
+      .join("\n\n")
+      .trim(),
+  );
+
+  // A result may be text-only, mixed, or image-only, but never content-free.
+  if (
+    groups.some(
+      (group, groupIndex) =>
+        !segments[groupIndex] &&
+        !group.some((block) => block.kind === "image"),
+    )
+  ) {
+    return null;
+  }
+
+  const imageSegments: number[] = [];
+  groups.forEach((group, groupIndex) => {
+    group.forEach((block) => {
+      if (block.kind === "image") imageSegments.push(groupIndex);
+    });
+  });
+
+  return {
+    segments,
+    ...(imageSegments.length > 0 ? { imageSegments } : {}),
+  };
+}
+
 export function opTouches(op: TChunkEditOperation, id: string): boolean {
   return op.op === "merge" ? op.chunk_ids.includes(id) : op.chunk_id === id;
 }
@@ -177,6 +250,9 @@ export function buildChunkPreview(
         contentTypes: [...new Set(members.flatMap((member) => member.contentTypes ?? []))],
         imageUrls: members.flatMap((member) => getChunkImageUrls(member)),
         content: members.map((member) => contentOf(member)).join("\n\n"),
+        // The applied merge unions every member's boxes; show that union now.
+        regions: members.flatMap((member) => getChunkRegions(member)),
+        regionsArePending: true,
       });
       continue;
     }
@@ -202,9 +278,16 @@ export function buildChunkPreview(
           displayIndex: 0,
           pageNumber: chunk.pageNumber ?? null,
           charCount: segment.length,
-          contentTypes: segmentImages.length ? ["text", "image"] : ["text"],
+          contentTypes: [
+            ...(segment.trim() ? ["text"] : []),
+            ...(segmentImages.length ? ["image"] : []),
+          ],
           imageUrls: segmentImages,
           content: segment,
+          // The backend slices these by character range on apply; until then
+          // every segment can only point at the parent's footprint.
+          regions: getChunkRegions(chunk),
+          regionsArePending: true,
         });
       });
       continue;
@@ -223,6 +306,10 @@ export function buildChunkPreview(
       contentTypes: chunk.contentTypes ?? [],
       imageUrls: getChunkImageUrls(chunk),
       content,
+      regions: getChunkRegions(chunk),
+      // Editing the text does not move the boxes, so they stop describing it
+      // exactly — the same thing the backend marks stale on apply.
+      regionsArePending: isEdited,
     });
   }
 

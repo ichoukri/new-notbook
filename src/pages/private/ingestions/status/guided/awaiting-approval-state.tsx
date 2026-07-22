@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CheckCircle2, Database, FileText, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,7 @@ export function AwaitingApprovalState({
   isCancelling,
   isEditingChunks,
   isSavingRemovals,
+  banner,
 }: {
   document: TIngestionDocument;
   datasetName: string;
@@ -52,6 +53,8 @@ export function AwaitingApprovalState({
   isCancelling: boolean;
   isEditingChunks: boolean;
   isSavingRemovals: boolean;
+  /** Rendered above the content — the batch review queue bar. */
+  banner?: ReactNode;
 }) {
   const stageLabel = STAGE_DISPLAY_NAMES[stage] ?? stage;
   const description =
@@ -69,7 +72,7 @@ export function AwaitingApprovalState({
     stage === "graph" ? !graphReviewState.ready : pendingChunkChanges > 0;
 
   return (
-    <IngestionShell title="Guided Ingestion">
+    <IngestionShell title="Guided Ingestion" banner={banner}>
       <Hero
         icon={FileText}
         title={document.filename}
@@ -108,6 +111,8 @@ export function AwaitingApprovalState({
           chunks={chunks}
           isLoading={isLoadingChunks}
           stage={stage}
+          documentId={document.id}
+          canPreviewSource={(document.fileType ?? "").toLowerCase() === "pdf"}
           onSubmitEdits={onSubmitEdits}
           isSubmitting={isEditingChunks}
           disabled={isApproving || isCancelling}

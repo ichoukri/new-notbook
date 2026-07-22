@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   TGraphEntity,
   TGraphNeighborhood,
@@ -67,6 +67,43 @@ const neighborhood: TGraphNeighborhood = {
 };
 
 describe("NeighborhoodPanel", () => {
+  afterEach(cleanup);
+
+  it("renders the neighborhood graph by default and selects entities from it", () => {
+    const onSelectEntity = vi.fn();
+
+    render(
+      <NeighborhoodPanel
+        selectedEntity={center}
+        neighborhood={neighborhood}
+        depth={1}
+        isLoading={false}
+        error={null}
+        onDepthChange={vi.fn()}
+        onSelectEntity={onSelectEntity}
+        onOpenDocument={vi.fn()}
+        onRetry={vi.fn()}
+        onEdit={vi.fn()}
+        onMerge={vi.fn()}
+        onExclude={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("group", { name: /Neighborhood graph for Mill 1/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Mill 1 — Equipment (current center)" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Bearing 1 — Component" }),
+    );
+    expect(onSelectEntity).toHaveBeenCalledWith(
+      "ent_bbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+  });
+
   it("renders evidence-backed relations and opens a citation document", () => {
     const onOpenDocument = vi.fn();
     const onSelectEntity = vi.fn();
@@ -88,6 +125,8 @@ describe("NeighborhoodPanel", () => {
         onExclude={vi.fn()}
       />,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "List view" }));
 
     expect(screen.getByText("Part Of")).toBeInTheDocument();
     expect(screen.getByText("Bearing 1 is part of Mill 1.")).toBeInTheDocument();

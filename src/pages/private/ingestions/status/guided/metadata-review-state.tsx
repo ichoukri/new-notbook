@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CheckCircle2, Database, Loader2, Save, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ export function MetadataReviewState({
   onCancel,
   isSaving,
   isCancelling,
+  banner,
 }: {
   document: TIngestionDocument;
   datasetName: string;
@@ -35,6 +36,8 @@ export function MetadataReviewState({
   onCancel: () => void;
   isSaving: boolean;
   isCancelling: boolean;
+  /** Rendered above the content — the batch review queue bar. */
+  banner?: ReactNode;
 }) {
   const existingMeta = (document.docMetadata ?? {}) as Record<string, unknown>;
   const existingPolicy = (document.accessPolicy ?? {}) as Record<
@@ -93,7 +96,7 @@ export function MetadataReviewState({
     "mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200";
 
   return (
-    <IngestionShell title="Guided Ingestion">
+    <IngestionShell title="Guided Ingestion" banner={banner}>
       <Hero
         icon={Tag}
         title={document.filename}

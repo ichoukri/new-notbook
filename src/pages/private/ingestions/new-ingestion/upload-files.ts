@@ -23,15 +23,53 @@ export const SUPPORTED_FILE_EXTENSIONS = [
   ".webp",
 ] as const;
 
+// Directories that are never document sources. Dot-prefixed names (.git,
+// .venv, .idea, .cache) are covered by the generic hidden-segment rule below;
+// these are the common non-dotted offenders. Dropping a project folder that
+// contains one of these would otherwise enumerate tens of thousands of entries.
+export const IGNORED_DIRECTORY_NAMES = new Set([
+  "node_modules",
+  "__pycache__",
+  "venv",
+]);
+
 export type CollectResult = {
   accepted: File[];
   skippedMacOSSidecars: number;
+  skippedHidden: number;
   skippedUnsupported: number;
   skippedOversize: number;
 };
 
 export function getFileExt(name: string) {
   return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+export function isHiddenName(segment: string): boolean {
+  return segment.startsWith(".");
+}
+
+export function isIgnoredDirectoryName(name: string): boolean {
+  return isHiddenName(name) || IGNORED_DIRECTORY_NAMES.has(name);
+}
+
+// Files chosen through <input webkitdirectory> arrive already flattened, so the
+// walk's per-directory pruning never sees them. Re-check the whole path here so
+// both entry points skip the same things.
+export function hasIgnoredPathSegment(file: File): boolean {
+  const path = file.webkitRelativePath;
+  if (!path) return isHiddenName(file.name);
+
+  const segments = path
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean);
+
+  return segments.some((segment, index) =>
+    index === segments.length - 1
+      ? isHiddenName(segment)
+      : isIgnoredDirectoryName(segment),
+  );
 }
 
 export function normalizeRelativePath(
@@ -120,11 +158,18 @@ export function isSupportedFile(file: File): boolean {
 export function collectAcceptedFiles(files: File[]): CollectResult {
   const accepted: File[] = [];
   let skippedMacOSSidecars = 0;
+  let skippedHidden = 0;
   let skippedUnsupported = 0;
   let skippedOversize = 0;
   for (const file of files) {
+    // Sidecars are dot-prefixed too, so they must be classified before the
+    // generic hidden check to keep their count meaningful.
     if (isMacOSSidecar(file)) {
       skippedMacOSSidecars += 1;
+      continue;
+    }
+    if (hasIgnoredPathSegment(file)) {
+      skippedHidden += 1;
       continue;
     }
     if (!isSupportedFile(file)) {
@@ -140,14 +185,52 @@ export function collectAcceptedFiles(files: File[]): CollectResult {
   return {
     accepted,
     skippedMacOSSidecars,
+    skippedHidden,
     skippedUnsupported,
     skippedOversize,
   };
 }
 
+export type ScanProgress = {
+  files: number;
+  bytes: number;
+  skippedHidden: number;
+  /** Folder currently being enumerated, for the scanning indicator. */
+  currentPath: string | null;
+};
+
+export type ReadDataTransferOptions = {
+  /** Aborts the walk; the returned promise rejects with an AbortError. */
+  signal?: AbortSignal;
+  onProgress?: (progress: ScanProgress) => void;
+  /** Throttle window for onProgress, so a big folder can't flood React. */
+  progressIntervalMs?: number;
+};
+
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+/**
+ * Whether a drop contains at least one directory. Must be called synchronously
+ * from the drop handler, while the DataTransfer is still live. Lets the UI show
+ * the scanning indicator only for folder drops, instead of flashing it for a
+ * two-file drop that resolves in a single frame.
+ */
+export function dataTransferHasDirectory(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.items ?? []).some((item) => {
+    if (typeof item.webkitGetAsEntry !== "function") return false;
+    return item.webkitGetAsEntry()?.isDirectory === true;
+  });
+}
+
 export async function readDataTransferFiles(
   dataTransfer: DataTransfer,
+  { signal, onProgress, progressIntervalMs = 120 }: ReadDataTransferOptions = {},
 ): Promise<File[]> {
+  // Everything up to the first await must stay synchronous: the DataTransfer is
+  // neutered once the drop handler returns, so the entries have to be claimed
+  // inside the event tick.
   const items = Array.from(dataTransfer.items ?? []);
   const supportsEntries =
     items.length > 0 && typeof items[0].webkitGetAsEntry === "function";
@@ -155,35 +238,6 @@ export async function readDataTransferFiles(
   if (!supportsEntries) {
     return Array.from(dataTransfer.files ?? []);
   }
-
-  const readEntries = (
-    reader: FileSystemDirectoryReader,
-  ): Promise<FileSystemEntry[]> =>
-    new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-
-  const walk = async (
-    entry: FileSystemEntry,
-    parentPath = "",
-  ): Promise<File[]> => {
-    const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
-    if (entry.isFile) {
-      const fileEntry = entry as FileSystemFileEntry;
-      const file = await new Promise<File>((resolve, reject) =>
-        fileEntry.file(resolve, reject),
-      );
-      return [withRelativePath(file, relativePath)];
-    }
-    const dirReader = (entry as FileSystemDirectoryEntry).createReader();
-    const collected: File[] = [];
-    while (true) {
-      const batch = await readEntries(dirReader);
-      if (batch.length === 0) break;
-      for (const child of batch) {
-        collected.push(...(await walk(child, relativePath)));
-      }
-    }
-    return collected;
-  };
 
   const entries = items
     .map((item) => item.webkitGetAsEntry())
@@ -193,6 +247,84 @@ export async function readDataTransferFiles(
     return Array.from(dataTransfer.files ?? []);
   }
 
-  const nested = await Promise.all(entries.map((entry) => walk(entry)));
-  return nested.flat();
+  const progress: ScanProgress = {
+    files: 0,
+    bytes: 0,
+    skippedHidden: 0,
+    currentPath: null,
+  };
+  let lastEmit = 0;
+
+  const emit = (force = false) => {
+    if (!onProgress) return;
+    const now = Date.now();
+    if (!force && now - lastEmit < progressIntervalMs) return;
+    lastEmit = now;
+    onProgress({ ...progress });
+  };
+
+  const throwIfAborted = () => {
+    if (signal?.aborted) {
+      throw new DOMException("Folder scan cancelled", "AbortError");
+    }
+  };
+
+  const readEntries = (
+    reader: FileSystemDirectoryReader,
+  ): Promise<FileSystemEntry[]> =>
+    new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+
+  const collected: File[] = [];
+
+  const walk = async (entry: FileSystemEntry, parentPath = ""): Promise<void> => {
+    throwIfAborted();
+    const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+    if (entry.isFile) {
+      if (isHiddenName(entry.name)) {
+        progress.skippedHidden += 1;
+        return;
+      }
+      const fileEntry = entry as FileSystemFileEntry;
+      const file = await new Promise<File>((resolve, reject) =>
+        fileEntry.file(resolve, reject),
+      );
+      collected.push(withRelativePath(file, relativePath));
+      progress.files += 1;
+      progress.bytes += file.size;
+      emit();
+      return;
+    }
+
+    // Prune the whole subtree rather than descending and filtering per file —
+    // this is what keeps a stray node_modules from pinning the tab.
+    if (isIgnoredDirectoryName(entry.name)) {
+      progress.skippedHidden += 1;
+      return;
+    }
+
+    progress.currentPath = relativePath;
+    emit();
+
+    const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+    while (true) {
+      throwIfAborted();
+      const batch = await readEntries(dirReader);
+      if (batch.length === 0) break;
+      for (const child of batch) {
+        await walk(child, relativePath);
+      }
+    }
+  };
+
+  try {
+    for (const entry of entries) {
+      await walk(entry);
+    }
+  } finally {
+    progress.currentPath = null;
+    emit(true);
+  }
+
+  return collected;
 }

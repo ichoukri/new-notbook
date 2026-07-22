@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   CheckCircle2,
   CheckSquare,
+  FileText,
   Layers,
   Loader2,
   MinusSquare,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ingestion/ui";
+import { cn } from "@/lib/utils";
 import type {
   TChunkEditOperation,
   TIngestionChunk,
@@ -18,16 +20,20 @@ import type {
 import {
   type SplitBlock,
   buildChunkPreview,
+  buildChunkSplitPlan,
   opTouches,
 } from "./chunk-preview";
 import { ChunkImagePreviewDialog } from "./chunk-image-preview-dialog";
 import { ChunkReviewRow } from "./chunk-review-row";
+import { ChunkSourcePane } from "./chunk-source-pane";
 import { ReviewFilterBar } from "./review-filter-bar";
 
 export function ChunkReview({
   chunks,
   isLoading,
   stage,
+  documentId,
+  canPreviewSource = false,
   onSubmitEdits,
   isSubmitting,
   disabled,
@@ -36,6 +42,9 @@ export function ChunkReview({
   chunks: TIngestionChunk[];
   isLoading: boolean;
   stage: string;
+  documentId?: string;
+  /** Only PDFs can be shown beside the list. */
+  canPreviewSource?: boolean;
   onSubmitEdits: (operations: TChunkEditOperation[]) => void;
   isSubmitting: boolean;
   disabled: boolean;
@@ -53,6 +62,12 @@ export function ChunkReview({
   const [typeFilter, setTypeFilter] = useState("all");
   const [pageFilter, setPageFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // The source pane is opt-in: the list already carries filters, bulk select and
+  // per-row editors, so forcing two columns would cramp a laptop screen.
+  const [showSource, setShowSource] = useState(false);
+  // Keyed by preview row key, not server id: applying edits replaces chunks
+  // with new rows at a new version, so a server id would go stale instantly.
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
 
   useEffect(() => {
     onPendingChange?.(pendingOps.length);
@@ -111,63 +126,18 @@ export function ChunkReview({
     });
 
   const confirmSplit = (serverId: string, blocks: SplitBlock[]) => {
-    const cuts = [...splitAfter].sort((a, b) => a - b);
-    // Partition the ordered blocks into contiguous groups at each cut.
-    const groups: SplitBlock[][] = [];
-    let start = 0;
-    for (const cut of cuts) {
-      groups.push(blocks.slice(start, cut + 1));
-      start = cut + 1;
-    }
-    groups.push(blocks.slice(start));
-
-    // Only text-bearing groups become resulting chunks (the backend requires
-    // every chunk to carry text). The text per chunk = its text/table blocks
-    // joined; each group records which resulting segment its content maps to.
-    const segments: string[] = [];
-    const groupToSegment: (number | null)[] = groups.map((group) => {
-      const text = group
-        .filter((block) => block.kind === "text")
-        .map((block) => block.text)
-        .join("\n\n")
-        .trim();
-      if (!text) return null;
-      segments.push(text);
-      return segments.length - 1;
-    });
-
-    if (segments.length < 2) {
-      toast.error("Add a split point between text to divide this chunk.");
+    const plan = buildChunkSplitPlan(blocks, splitAfter);
+    if (!plan) {
+      toast.error("Choose a split that leaves content in every chunk.");
       return;
     }
-
-    // Assign each image (in source-chunk image order) to a segment: its own
-    // group if that group has text, otherwise it rides along with the nearest
-    // preceding text segment — so an image is never orphaned into a text-less
-    // chunk, but still follows your split boundaries.
-    const imageSegments: number[] = [];
-    groups.forEach((group, groupIndex) => {
-      for (const block of group) {
-        if (block.kind !== "image") continue;
-        let target = groupToSegment[groupIndex];
-        if (target === null) {
-          for (let g = groupIndex - 1; g >= 0; g -= 1) {
-            if (groupToSegment[g] !== null) {
-              target = groupToSegment[g];
-              break;
-            }
-          }
-        }
-        imageSegments.push(target ?? 0);
-      }
-    });
 
     stageOp(
       {
         op: "split",
         chunk_id: serverId,
-        segments,
-        image_segments: imageSegments.length ? imageSegments : undefined,
+        segments: plan.segments,
+        image_segments: plan.imageSegments,
       },
       [serverId],
     );
@@ -245,6 +215,7 @@ export function ChunkReview({
 
   const busy = isSubmitting || disabled;
   const hasPending = pendingOps.length > 0;
+  const sourceAvailable = Boolean(documentId) && canPreviewSource;
   const editorOpen = editingId !== null || splittingId !== null;
 
   const typeOptions = [
@@ -307,7 +278,19 @@ export function ChunkReview({
         title={showSummary ? "Chunk summaries" : "Chunk content"}
         subtitle={`${previewChunks.filter((row) => row.status !== "deleted").length} chunks · version ${chunks[0]?.chunkVersion}`}
         actions={
-          hasPending ? (
+          <div className="flex items-center gap-2">
+            {sourceAvailable && (
+              <Button
+                size="sm"
+                variant={showSource ? "default" : "outline"}
+                onClick={() => setShowSource((open) => !open)}
+                title="Show the source PDF beside the chunk list"
+              >
+                <FileText className="mr-1.5 size-3.5" />
+                {showSource ? "Hide source" : "Show source"}
+              </Button>
+            )}
+            {hasPending ? (
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-violet-600">
                 {pendingOps.length} pending change
@@ -330,7 +313,8 @@ export function ChunkReview({
                 Apply
               </Button>
             </div>
-          ) : undefined
+            ) : null}
+          </div>
         }
         bodyClassName=""
       >
@@ -411,6 +395,13 @@ export function ChunkReview({
                 </div>
               )}
             </div>
+            <div
+              className={cn(
+                showSource && sourceAvailable
+                  ? "grid gap-0 xl:grid-cols-2"
+                  : "",
+              )}
+            >
             <div className="max-h-[600px] overflow-y-auto py-1">
               {visibleChunks.map((row, index) => (
                 <ChunkReviewRow
@@ -444,8 +435,24 @@ export function ChunkReview({
                     row.serverId != null && selectedIds.has(row.serverId)
                   }
                   onToggleSelect={toggleSelect}
+                  onFocus={
+                    showSource && sourceAvailable ? setFocusedKey : undefined
+                  }
+                  isFocused={focusedKey === row.key}
                 />
               ))}
+            </div>
+
+            {showSource && sourceAvailable && documentId && (
+              <div className="h-[600px] border-t border-gray-100 xl:border-l xl:border-t-0">
+                <ChunkSourcePane
+                  documentId={documentId}
+                  rows={previewChunks}
+                  focusedKey={focusedKey}
+                  onFocusRow={setFocusedKey}
+                />
+              </div>
+            )}
             </div>
           </>
         )}
