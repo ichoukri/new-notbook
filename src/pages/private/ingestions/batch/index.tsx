@@ -10,18 +10,21 @@ import {
   Folder,
   FolderOpen,
   Loader2,
+  OctagonX,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { IngestionShell } from "@/components/ingestion/ui";
 import { backendApi } from "@/core/api";
+import { getApiErrorStatus } from "@/core/api/error";
 import { formatFileSize } from "@/core/datasets";
 import { buildIngestionReviewUrl, loadIngestionBatch } from "@/core/batches";
 import {
   type TBackendDocumentMutationResponse,
   type TIngestionDocument,
   isAwaitingApproval,
+  isLiveInPipeline,
   isMetadataReview,
   mapBackendDocument,
 } from "@/core/ingestions";
@@ -33,6 +36,7 @@ import {
   type TreeFolderNode,
   type TreeNode,
 } from "../new-ingestion/file-tree";
+import { CancelIngestionDialog } from "../status/cancel-ingestion-dialog";
 import { MissingState } from "../status/status-states";
 import { useDocumentRoster } from "../use-document-roster";
 import { splitRosterByState } from "../roster-buckets";
@@ -101,6 +105,11 @@ function BatchView({
   const roster = useDocumentRoster({ documentIds, datasetId });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // Either one document ("stop this") or the whole in-flight set ("stop all").
+  const [cancelTargets, setCancelTargets] = useState<TIngestionDocument[] | null>(
+    null,
+  );
 
   const buckets = useMemo(
     () =>
@@ -199,6 +208,56 @@ function BatchView({
     }
   };
 
+  const cancelDocuments = async (targets: TIngestionDocument[]) => {
+    if (isCancelling || targets.length === 0) return;
+    setIsCancelling(true);
+    try {
+      // Settle all of them: a 409 on one document (a stage holding the lock)
+      // must not stop the rest from being cancelled.
+      const outcomes = await Promise.allSettled(
+        targets.map((document) =>
+          backendApi.create<TBackendDocumentMutationResponse, undefined>(
+            `/documents/${document.id}/cancel`,
+            undefined,
+          ),
+        ),
+      );
+
+      let stopped = 0;
+      let busy = 0;
+      for (const outcome of outcomes) {
+        if (outcome.status === "fulfilled") {
+          stopped += 1;
+          roster.applyDocument(mapBackendDocument(outcome.value.data));
+        } else if (getApiErrorStatus(outcome.reason) === 409) {
+          busy += 1;
+        }
+      }
+
+      if (stopped === targets.length) {
+        toast.success(
+          targets.length === 1
+            ? "Ingestion stopped."
+            : `Stopped ${stopped} ingestions.`,
+        );
+      } else if (busy > 0) {
+        toast.info(
+          `Stopped ${stopped} of ${targets.length}. ${busy} had a stage finishing — try again in a moment.`,
+        );
+      } else {
+        toast.error(
+          `Stopped ${stopped} of ${targets.length}; the rest could not be stopped.`,
+        );
+      }
+      setCancelTargets(null);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  /** Documents still doing work — the only ones there is anything to stop. */
+  const stoppable = [...buckets.processing, ...buckets.awaiting];
+
   // Deleted documents are settled too — they will never progress again, and
   // leaving them out would hold the progress bar short of 100% forever.
   const settled =
@@ -222,6 +281,18 @@ function BatchView({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {stoppable.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCancelTargets(stoppable)}
+                disabled={isCancelling}
+                className="text-red-600 hover:border-red-300 hover:text-red-700"
+              >
+                <OctagonX className="mr-1.5 size-3.5" />
+                Stop all
+              </Button>
+            )}
             {buckets.failed.length > 0 && (
               <Button
                 size="sm"
@@ -312,6 +383,7 @@ function BatchView({
                 size={node.size}
                 document={node.data.document}
                 isDeleted={node.data.isDeleted}
+                onStop={(target) => setCancelTargets([target])}
                 depth={depth}
                 onOpen={() =>
                   navigate(
@@ -323,6 +395,19 @@ function BatchView({
           )}
         </div>
       </div>
+
+      <CancelIngestionDialog
+        open={cancelTargets !== null}
+        filename={
+          cancelTargets?.length === 1 ? cancelTargets[0].filename : undefined
+        }
+        count={cancelTargets?.length ?? 0}
+        isCancelling={isCancelling}
+        onOpenChange={(open) => {
+          if (!open && !isCancelling) setCancelTargets(null);
+        }}
+        onConfirm={() => void cancelDocuments(cancelTargets ?? [])}
+      />
     </IngestionShell>
   );
 }
@@ -437,6 +522,7 @@ function BatchFileRow({
   isDeleted,
   depth,
   onOpen,
+  onStop,
 }: {
   name: string;
   size: number;
@@ -444,6 +530,7 @@ function BatchFileRow({
   isDeleted: boolean;
   depth: number;
   onOpen: () => void;
+  onStop: (document: TIngestionDocument) => void;
 }) {
   const stage = describeStage(document, { isDeleted });
   const needsReview =
@@ -478,6 +565,16 @@ function BatchFileRow({
       >
         {stage.label}
       </span>
+      {document && !isDeleted && isLiveInPipeline(document.processingStatus) && (
+        <button
+          type="button"
+          onClick={() => onStop(document)}
+          title="Stop processing this document"
+          className="flex-shrink-0 rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600"
+        >
+          <OctagonX className="size-4" />
+        </button>
+      )}
       <button
         type="button"
         onClick={onOpen}

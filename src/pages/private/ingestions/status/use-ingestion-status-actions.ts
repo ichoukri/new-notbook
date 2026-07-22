@@ -177,9 +177,21 @@ export function useIngestionStatusActions({
         undefined
       >(`/documents/${document.id}/cancel`, undefined);
       setDocument(mapBackendDocument(response.data));
-      toast.success("Ingestion cancelled.");
+      toast.success("Ingestion stopped and artifacts cleaned up.");
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not cancel ingestion."));
+      // 409 means a stage is holding the document lock. That is a normal race
+      // when stopping mid-pipeline, not a failure — the stage finishes in a
+      // moment and the retry succeeds.
+      if (getApiErrorStatus(error) === 409) {
+        toast.info(
+          getApiErrorMessage(
+            error,
+            "A stage is finishing right now — try stopping again in a moment.",
+          ),
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, "Could not stop this ingestion."));
+      }
     } finally {
       setIsCancelling(false);
     }

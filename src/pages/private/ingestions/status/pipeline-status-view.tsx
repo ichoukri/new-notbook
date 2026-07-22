@@ -5,6 +5,7 @@ import {
   Layers,
   Loader2,
   Network,
+  OctagonX,
   Sparkles,
   Terminal,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   getIngestionMetrics,
   getIngestionProgress,
 } from "@/core/ingestions";
+import { Button } from "@/components/ui/button";
 import { formatFileSize } from "@/core/datasets";
 import { cn } from "@/lib/utils";
 import { downloadLogs } from "./download-logs";
@@ -40,6 +42,8 @@ export function PipelineStatusView({
   chunks,
   isLoadingChunks,
   pageError,
+  onCancel,
+  isCancelling = false,
 }: {
   document: TIngestionDocument;
   datasetName: string;
@@ -47,6 +51,9 @@ export function PipelineStatusView({
   chunks: TIngestionChunk[];
   isLoadingChunks: boolean;
   pageError: string;
+  /** Omitted when the document is no longer stoppable. */
+  onCancel?: () => void;
+  isCancelling?: boolean;
 }) {
   const progress = getIngestionProgress(document);
   const metrics = getIngestionMetrics(document);
@@ -80,11 +87,32 @@ export function PipelineStatusView({
           </>
         }
         status={
-          <StatusPill
-            label={getDocumentStatusLabel(document.processingStatus)}
-            tone="amber"
-            pulse
-          />
+          <div className="flex items-center gap-2">
+            <StatusPill
+              label={getDocumentStatusLabel(document.processingStatus)}
+              tone="amber"
+              pulse
+            />
+            {onCancel && (
+              // The one moment someone wants to stop a run is while it is
+              // grinding, so the control belongs on this screen rather than
+              // only on the paused guided gates.
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="text-red-600 hover:border-red-300 hover:text-red-700"
+              >
+                {isCancelling ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <OctagonX className="mr-1.5 size-3.5" />
+                )}
+                Stop
+              </Button>
+            )}
+          </div>
         }
       />
 

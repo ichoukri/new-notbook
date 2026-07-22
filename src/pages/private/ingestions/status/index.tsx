@@ -1,4 +1,5 @@
 import { useNavigate, useSearchParams } from "react-router";
+import { useState } from "react";
 import {
   getAwaitingApprovalStage,
   getIngestionError,
@@ -6,9 +7,11 @@ import {
   getIngestionFailedStage,
   getIngestionLogs,
   getIngestionPipeline,
+  isLiveInPipeline,
   isMetadataReview,
 } from "@/core/ingestions";
 import { AwaitingApprovalState, MetadataReviewState } from "./guided";
+import { CancelIngestionDialog } from "./cancel-ingestion-dialog";
 import { PipelineStatusView } from "./pipeline-status-view";
 import { ErrorState, LoadingState, MissingState } from "./status-states";
 import { useIngestionStatusActions } from "./use-ingestion-status-actions";
@@ -17,6 +20,7 @@ import { useIngestionStatusData } from "./use-ingestion-status-data";
 export default function IngestionStatusPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [showCancel, setShowCancel] = useState(false);
   const documentId = searchParams.get("document_id")?.trim() ?? "";
   const requestedDatasetId = searchParams.get("dataset_id")?.trim() ?? "";
 
@@ -124,13 +128,33 @@ export default function IngestionStatusPage() {
   }
 
   return (
-    <PipelineStatusView
-      document={document}
-      datasetName={datasetName}
-      pipeline={pipeline}
-      chunks={chunks}
-      isLoadingChunks={isLoadingChunks}
-      pageError={pageError}
-    />
+    <>
+      <PipelineStatusView
+        document={document}
+        datasetName={datasetName}
+        pipeline={pipeline}
+        chunks={chunks}
+        isLoadingChunks={isLoadingChunks}
+        pageError={pageError}
+        // Only offered while there is work to stop; a finished or already
+        // cancelled document has nothing to revoke.
+        onCancel={
+          isLiveInPipeline(document.processingStatus)
+            ? () => setShowCancel(true)
+            : undefined
+        }
+        isCancelling={actions.isCancelling}
+      />
+      <CancelIngestionDialog
+        open={showCancel}
+        filename={document.filename}
+        isCancelling={actions.isCancelling}
+        onOpenChange={setShowCancel}
+        onConfirm={async () => {
+          await actions.handleCancel();
+          setShowCancel(false);
+        }}
+      />
+    </>
   );
 }
