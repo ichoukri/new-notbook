@@ -8,6 +8,9 @@ export type PartitionElement = {
   has_table: boolean;
   table_html: string | null;
   image_path: string | null;
+  /** Shared by near-identical images (e.g. a logo repeated on every page) so
+   *  the whole set can be selected at once. Null when it has no duplicates. */
+  duplicate_group_id: string | null;
 };
 
 export function parsePartitionElements(value: unknown): PartitionElement[] {
@@ -30,6 +33,10 @@ export function parsePartitionElements(value: unknown): PartitionElement[] {
           typeof record.table_html === "string" ? record.table_html : null,
         image_path:
           typeof record.image_path === "string" ? record.image_path : null,
+        duplicate_group_id:
+          typeof record.duplicate_group_id === "string"
+            ? record.duplicate_group_id
+            : null,
       } satisfies PartitionElement;
     })
     .filter((item): item is PartitionElement => item !== null);

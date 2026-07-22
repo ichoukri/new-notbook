@@ -1,5 +1,6 @@
 import {
   CheckSquare,
+  CopyCheck,
   FileText,
   Layers,
   Loader2,
@@ -39,6 +40,9 @@ export function PartitionReview({
   const [typeFilter, setTypeFilter] = useState("all");
   const [pageFilter, setPageFilter] = useState("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Set from a row's "N identical" badge to narrow the list to one duplicate
+  // set, so a bulk removal can be eyeballed before it happens.
+  const [duplicateFilter, setDuplicateFilter] = useState<string | null>(null);
 
   const typeOptions = [...new Set(elements.map((element) => element.type))].sort();
   const pageOptions = [
@@ -53,6 +57,9 @@ export function PartitionReview({
   const filteredElements = elements.filter((element) => {
     if (typeFilter !== "all" && element.type !== typeFilter) return false;
     if (pageFilter !== "all" && String(element.page) !== pageFilter) return false;
+    if (duplicateFilter && element.duplicate_group_id !== duplicateFilter) {
+      return false;
+    }
     if (
       query &&
       !element.preview.toLowerCase().includes(query) &&
@@ -71,6 +78,32 @@ export function PartitionReview({
   );
 
   const busy = isSaving || disabled;
+
+  // Near-identical images (a logo repeated on every page, say) share a
+  // duplicate_group_id. Grouping spans every element, not just the visible
+  // rows, so selecting a set never requires scrolling to each page it sits on.
+  const duplicateGroups = new Map<string, number[]>();
+  for (const element of elements) {
+    if (!element.duplicate_group_id) continue;
+    const members = duplicateGroups.get(element.duplicate_group_id);
+    if (members) members.push(element.index);
+    else duplicateGroups.set(element.duplicate_group_id, [element.index]);
+  }
+
+  // Already-removed members are skipped so the count on the button matches
+  // what pressing it actually selects.
+  const selectableDuplicates = (groupId: string) =>
+    (duplicateGroups.get(groupId) ?? []).filter((index) => !removed.has(index));
+
+  const selectDuplicates = (groupId: string) => {
+    if (busy) return;
+    const members = selectableDuplicates(groupId);
+    if (members.length === 0) return;
+    setSelected((prev) => new Set([...prev, ...members]));
+  };
+
+  const toggleDuplicateFilter = (groupId: string) =>
+    setDuplicateFilter((current) => (current === groupId ? null : groupId));
 
   const toggle = (index: number) => {
     if (busy) return;
@@ -217,6 +250,16 @@ export function PartitionReview({
                 pageOptions={pageOptions}
                 resultCount={filteredElements.length}
                 totalCount={elements.length}
+                extraFilter={
+                  duplicateFilter
+                    ? {
+                        label: `${
+                          duplicateGroups.get(duplicateFilter)?.length ?? 0
+                        } identical images`,
+                        onClear: () => setDuplicateFilter(null),
+                      }
+                    : null
+                }
               />
               {filteredElements.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-gray-400">
@@ -275,6 +318,17 @@ export function PartitionReview({
                   {filteredElements.map((element) => {
                     const isRemoved = removed.has(element.index);
                     const isSelected = selected.has(element.index);
+                    const groupId = element.duplicate_group_id;
+                    const duplicateCount = groupId
+                      ? (duplicateGroups.get(groupId)?.length ?? 0)
+                      : 0;
+                    const pendingDuplicates = groupId
+                      ? selectableDuplicates(groupId).filter(
+                          (index) => !selected.has(index),
+                        ).length
+                      : 0;
+                    const isGroupFiltered =
+                      groupId != null && duplicateFilter === groupId;
                     return (
                       <div
                         key={element.index}
@@ -318,6 +372,41 @@ export function PartitionReview({
                               <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
                                 image
                               </span>
+                            )}
+                            {groupId && duplicateCount > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDuplicateFilter(groupId)}
+                                  className={cn(
+                                    "rounded px-2 py-0.5 transition-colors",
+                                    isGroupFiltered
+                                      ? "bg-sky-600 text-white"
+                                      : "bg-sky-50 text-sky-700 hover:bg-sky-100",
+                                  )}
+                                  title={
+                                    isGroupFiltered
+                                      ? "Show all elements again"
+                                      : `Show only these ${duplicateCount} images`
+                                  }
+                                >
+                                  {duplicateCount} identical
+                                </button>
+                                {pendingDuplicates > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => selectDuplicates(groupId)}
+                                    disabled={busy}
+                                    className="flex items-center gap-1 rounded-lg px-2 py-0.5 font-medium text-violet-700 transition-colors hover:bg-violet-50 disabled:opacity-40"
+                                    title={`Select the ${pendingDuplicates} matching image${
+                                      pendingDuplicates === 1 ? "" : "s"
+                                    } wherever they appear`}
+                                  >
+                                    <CopyCheck className="size-3.5" />
+                                    Select all {duplicateCount} in document
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                           {!element.table_html && (

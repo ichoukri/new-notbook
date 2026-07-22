@@ -12,6 +12,7 @@ export function ReviewFilterBar({
   pageOptions,
   resultCount,
   totalCount,
+  extraFilter,
 }: {
   search: string;
   onSearch: (value: string) => void;
@@ -24,9 +25,15 @@ export function ReviewFilterBar({
   pageOptions: number[];
   resultCount: number;
   totalCount: number;
+  /** A filter owned by the caller (e.g. "show only this duplicate set"), shown
+   *  as a dismissable chip so it clears the same way the built-in ones do. */
+  extraFilter?: { label: string; onClear: () => void } | null;
 }) {
   const hasFilters =
-    search.trim() !== "" || typeValue !== "all" || pageValue !== "all";
+    search.trim() !== "" ||
+    typeValue !== "all" ||
+    pageValue !== "all" ||
+    Boolean(extraFilter);
   const selectClass =
     "rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200";
 
@@ -72,6 +79,16 @@ export function ReviewFilterBar({
           ))}
         </select>
       )}
+      {extraFilter && (
+        <button
+          type="button"
+          onClick={extraFilter.onClear}
+          className="flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100"
+        >
+          {extraFilter.label}
+          <X className="size-3" />
+        </button>
+      )}
       {hasFilters && (
         <button
           type="button"
@@ -79,6 +96,7 @@ export function ReviewFilterBar({
             onSearch("");
             onType("all");
             onPage("all");
+            extraFilter?.onClear();
           }}
           className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-100"
         >
