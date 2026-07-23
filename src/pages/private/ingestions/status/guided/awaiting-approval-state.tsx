@@ -1,5 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Database, FileText, Loader2, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Database,
+  FileText,
+  Loader2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ActionBar,
@@ -18,6 +25,7 @@ import { formatFileSize } from "@/core/datasets";
 import { ChunkReview } from "./chunk-review";
 import { GraphReview, type TGraphReviewState } from "./graph-review";
 import { PartitionReview } from "./partition-review";
+import { RevertStageDialog } from "./revert-stage-dialog";
 import { STAGE_DESCRIPTIONS, STAGE_DISPLAY_NAMES } from "./stage-copy";
 
 export function AwaitingApprovalState({
@@ -29,10 +37,12 @@ export function AwaitingApprovalState({
   isLoadingChunks,
   partitionOutput,
   onApprove,
+  onRevert,
   onCancel,
   onSubmitEdits,
   onSaveRemovals,
   isApproving,
+  isReverting,
   isCancelling,
   isEditingChunks,
   isSavingRemovals,
@@ -46,10 +56,14 @@ export function AwaitingApprovalState({
   isLoadingChunks: boolean;
   partitionOutput: Record<string, unknown> | null;
   onApprove: () => void;
+  /** Steps back to the previous review pause. Absent when this pause can't
+   *  revert (first review, or across a published knowledge graph). */
+  onRevert?: () => void;
   onCancel: () => void;
   onSubmitEdits: (operations: TChunkEditOperation[]) => void;
   onSaveRemovals: (removedIndices: number[]) => void;
   isApproving: boolean;
+  isReverting?: boolean;
   isCancelling: boolean;
   isEditingChunks: boolean;
   isSavingRemovals: boolean;
@@ -62,14 +76,19 @@ export function AwaitingApprovalState({
     "Review the output of this stage and approve to continue.";
 
   const [pendingChunkChanges, setPendingChunkChanges] = useState(0);
+  const [showRevert, setShowRevert] = useState(false);
   const [graphReviewState, setGraphReviewState] = useState<TGraphReviewState>({
     pendingCount: null,
     ready: false,
     isLoading: true,
     hasError: false,
   });
+  const isBusy = isApproving || Boolean(isReverting) || isCancelling;
   const blockApprove =
     stage === "graph" ? !graphReviewState.ready : pendingChunkChanges > 0;
+  // Staged-but-unapplied chunk edits would be silently lost by leaving this
+  // review; an unfinished graph review, by contrast, is a fine time to leave.
+  const blockRevert = pendingChunkChanges > 0;
 
   return (
     <IngestionShell title="Guided Ingestion" banner={banner}>
@@ -100,7 +119,7 @@ export function AwaitingApprovalState({
           output={partitionOutput}
           onSaveRemovals={onSaveRemovals}
           isSaving={isSavingRemovals}
-          disabled={isApproving || isCancelling}
+          disabled={isBusy}
         />
       )}
       {(stage === "chunking" ||
@@ -115,14 +134,14 @@ export function AwaitingApprovalState({
           canPreviewSource={(document.fileType ?? "").toLowerCase() === "pdf"}
           onSubmitEdits={onSubmitEdits}
           isSubmitting={isEditingChunks}
-          disabled={isApproving || isCancelling}
+          disabled={isBusy}
           onPendingChange={setPendingChunkChanges}
         />
       )}
       {stage === "graph" && (
         <GraphReview
           documentId={document.id}
-          disabled={isApproving || isCancelling}
+          disabled={isBusy}
           onStateChange={setGraphReviewState}
         />
       )}
@@ -162,11 +181,31 @@ export function AwaitingApprovalState({
             </span>
           )}
         </span>
+        {onRevert && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowRevert(true)}
+            disabled={isBusy || blockRevert}
+            title={
+              blockRevert
+                ? "Apply or discard your pending chunk changes first"
+                : undefined
+            }
+          >
+            {isReverting ? (
+              <Loader2 className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <Undo2 className="mr-1.5 size-4" />
+            )}
+            Back
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
           onClick={onCancel}
-          disabled={isApproving || isCancelling}
+          disabled={isBusy}
         >
           {isCancelling ? (
             <Loader2 className="mr-1.5 size-4 animate-spin" />
@@ -178,7 +217,7 @@ export function AwaitingApprovalState({
         <Button
           size="sm"
           onClick={onApprove}
-          disabled={isApproving || isCancelling || blockApprove}
+          disabled={isBusy || blockApprove}
           title={
             blockApprove
               ? stage === "graph"
@@ -195,6 +234,19 @@ export function AwaitingApprovalState({
           {stage === "graph" ? "Publish graph & continue" : "Approve & continue"}
         </Button>
       </ActionBar>
+
+      {onRevert && (
+        <RevertStageDialog
+          open={showRevert}
+          stage={stage}
+          isReverting={Boolean(isReverting)}
+          onOpenChange={setShowRevert}
+          onConfirm={() => {
+            setShowRevert(false);
+            onRevert();
+          }}
+        />
+      )}
     </IngestionShell>
   );
 }

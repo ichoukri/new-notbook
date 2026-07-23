@@ -7,6 +7,7 @@ import {
   getIngestionFailedStage,
   getIngestionLogs,
   getIngestionPipeline,
+  getRevertStage,
   isLiveInPipeline,
   isMetadataReview,
 } from "@/core/ingestions";
@@ -90,6 +91,12 @@ export default function IngestionStatusPage() {
     );
   }
 
+  // Non-null when this pause can step back to the previous review.
+  const revertStage = getRevertStage(document);
+  const onRevert = revertStage
+    ? () => void actions.handleRevert()
+    : undefined;
+
   if (isMetadataReview(document)) {
     return (
       <MetadataReviewState
@@ -97,8 +104,10 @@ export default function IngestionStatusPage() {
         datasetName={datasetName}
         pipeline={pipeline}
         onSave={(payload) => void actions.handleSaveMetadata(payload)}
+        onRevert={onRevert}
         onCancel={() => void actions.handleCancel()}
         isSaving={actions.isSavingMetadata}
+        isReverting={actions.isReverting}
         isCancelling={actions.isCancelling}
       />
     );
@@ -116,10 +125,12 @@ export default function IngestionStatusPage() {
         isLoadingChunks={isLoadingChunks}
         partitionOutput={partitionOutput}
         onApprove={() => void actions.handleApprove()}
+        onRevert={onRevert}
         onCancel={() => void actions.handleCancel()}
         onSubmitEdits={(ops) => void actions.handleEditChunks(ops)}
         onSaveRemovals={(indices) => void actions.handleSaveRemovals(indices)}
         isApproving={actions.isApproving}
+        isReverting={actions.isReverting}
         isCancelling={actions.isCancelling}
         isEditingChunks={actions.isEditingChunks}
         isSavingRemovals={actions.isSavingRemovals}

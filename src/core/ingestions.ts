@@ -581,6 +581,43 @@ export function isMetadataReview(document: TIngestionDocument): boolean {
   return document.processingStatus === "metadata_awaiting_approval";
 }
 
+// Maps ``*_AWAITING_APPROVAL`` statuses to the ``{stage}`` slug the revert
+// endpoint expects. Mirrors the backend's REVERT_STAGE_TO_STATUS: every
+// review pause except partition (the first — nothing earlier to return to).
+const _REVERT_STAGE_MAP: Record<string, string> = {
+  chunking_awaiting_approval: "chunking",
+  summarising_awaiting_approval: "summarising",
+  graph_extraction_awaiting_approval: "graph",
+  vectorization_awaiting_approval: "vectorization",
+  metadata_awaiting_approval: "metadata",
+};
+
+// The graph gate *publishes* the approved graph when it is passed, and the
+// backend refuses to step back across a published graph. The backend records
+// publication counts under processing_details.graph_extraction.publication
+// at publish time; checking that same durable marker here keeps the button
+// and the server in agreement even across deployment-flag changes.
+function hasPublishedGraph(document: TIngestionDocument): boolean {
+  const details = getRecord(document.processingDetails);
+  const graph = getRecord(details?.graph_extraction);
+  return getRecord(graph?.publication) !== null;
+}
+
+/**
+ * The ``{stage}`` slug to POST to ``/stages/{stage}/revert``, or null when
+ * this document can't step back from its current state.
+ *
+ * Stepping back is non-destructive: stage outputs are versioned on the
+ * backend, and re-approving forward reuses them unless their inputs changed.
+ */
+export function getRevertStage(document: TIngestionDocument): string | null {
+  const stage = _REVERT_STAGE_MAP[document.processingStatus] ?? null;
+  if (stage === "vectorization" && hasPublishedGraph(document)) {
+    return null;
+  }
+  return stage;
+}
+
 /**
  * Most approvals a single guided document can require: one per stage gate plus
  * the final metadata gate. Derived from the stage map so it cannot drift when

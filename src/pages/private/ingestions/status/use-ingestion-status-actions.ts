@@ -9,6 +9,7 @@ import {
   type TIngestionChunk,
   type TIngestionDocument,
   getAwaitingApprovalStage,
+  getRevertStage,
   mapBackendDocument,
 } from "@/core/ingestions";
 
@@ -33,6 +34,7 @@ export function useIngestionStatusActions({
 }: UseIngestionStatusActionsParams) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isEditingChunks, setIsEditingChunks] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
@@ -90,6 +92,35 @@ export function useIngestionStatusActions({
       }
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleRevert = async () => {
+    if (!document?.id || isReverting) return;
+    const stage = getRevertStage(document);
+    if (!stage) return;
+
+    setIsReverting(true);
+    try {
+      const response = await backendApi.create<
+        TBackendDocumentMutationResponse,
+        undefined
+      >(`/documents/${document.id}/stages/${stage}/revert`, undefined);
+      setDocument(mapBackendDocument(response.data));
+      // The earlier review sees the same versioned data, but stale rows from
+      // this pause (e.g. chunk list filters) shouldn't linger.
+      reloadChunks();
+      toast.success("Returned to the previous review step.");
+    } catch (error) {
+      if (getApiErrorStatus(error) === 409) {
+        toast.info(getApiErrorMessage(error, "Ingestion is already running."));
+      } else {
+        toast.error(
+          getApiErrorMessage(error, "Could not return to the previous step."),
+        );
+      }
+    } finally {
+      setIsReverting(false);
     }
   };
 
@@ -200,12 +231,14 @@ export function useIngestionStatusActions({
   return {
     handleRetry,
     handleApprove,
+    handleRevert,
     handleEditChunks,
     handleSaveRemovals,
     handleSaveMetadata,
     handleCancel,
     isRetrying,
     isApproving,
+    isReverting,
     isCancelling,
     isEditingChunks,
     isSavingMetadata,

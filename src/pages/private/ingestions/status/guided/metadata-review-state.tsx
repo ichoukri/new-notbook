@@ -1,6 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Database, Loader2, Save, Tag, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Database,
+  Loader2,
+  Save,
+  Tag,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RevertStageDialog } from "./revert-stage-dialog";
 import {
   ActionBar,
   Hero,
@@ -24,8 +33,10 @@ export function MetadataReviewState({
   datasetName,
   pipeline,
   onSave,
+  onRevert,
   onCancel,
   isSaving,
+  isReverting,
   isCancelling,
   banner,
 }: {
@@ -33,8 +44,11 @@ export function MetadataReviewState({
   datasetName: string;
   pipeline: TIngestionPipelineStep[];
   onSave: (payload: TDocumentMetadataPayload) => void;
+  /** Steps back to the vectorisation review. */
+  onRevert?: () => void;
   onCancel: () => void;
   isSaving: boolean;
+  isReverting?: boolean;
   isCancelling: boolean;
   /** Rendered above the content — the batch review queue bar. */
   banner?: ReactNode;
@@ -51,20 +65,31 @@ export function MetadataReviewState({
       ? value.filter((item): item is string => typeof item === "string")
       : [];
 
-  const [title, setTitle] = useState(
-    asString(existingMeta.title, document.filename),
-  );
-  const [description, setDescription] = useState(
-    asString(existingMeta.description),
-  );
-  const [tagsInput, setTagsInput] = useState(
-    asList(existingMeta.tags).join(", "),
-  );
+  const savedTitle = asString(existingMeta.title, document.filename);
+  const savedDescription = asString(existingMeta.description);
+  const savedTags = asList(existingMeta.tags).join(", ");
+
+  const [title, setTitle] = useState(savedTitle);
+  const [description, setDescription] = useState(savedDescription);
+  const [tagsInput, setTagsInput] = useState(savedTags);
   const parseList = (value: string) =>
     value
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
+
+  // The form fields live only in this component until "Save draft" persists
+  // them; stepping back unmounts the form. Compare against what the document
+  // actually holds (normalised the way submit() would send it) so Back can
+  // be blocked while edits would be silently lost — the revert dialog
+  // promises that nothing is deleted, and this keeps that promise true.
+  const hasUnsavedChanges =
+    JSON.stringify([title.trim(), description.trim(), parseList(tagsInput)]) !==
+    JSON.stringify([
+      savedTitle.trim(),
+      savedDescription.trim(),
+      parseList(savedTags),
+    ]);
 
   // Access is no longer chosen here; preserve the document's existing policy
   // (defaulting to organisation-wide) so the payload contract stays intact.
@@ -74,7 +99,8 @@ export function MetadataReviewState({
       ? existingPolicy.visibility
       : "tenant";
 
-  const busy = isSaving || isCancelling;
+  const busy = isSaving || Boolean(isReverting) || isCancelling;
+  const [showRevert, setShowRevert] = useState(false);
 
   const submit = (complete: boolean) => {
     onSave({
@@ -161,6 +187,26 @@ export function MetadataReviewState({
       </MotionStack>
 
       <ActionBar>
+        {onRevert && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowRevert(true)}
+            disabled={busy || hasUnsavedChanges}
+            title={
+              hasUnsavedChanges
+                ? "Save your metadata as a draft (or undo the changes) before going back"
+                : undefined
+            }
+          >
+            {isReverting ? (
+              <Loader2 className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <Undo2 className="mr-1.5 size-4" />
+            )}
+            Back
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={onCancel} disabled={busy}>
           {isCancelling ? (
             <Loader2 className="mr-1.5 size-4 animate-spin" />
@@ -191,6 +237,19 @@ export function MetadataReviewState({
           Complete document
         </Button>
       </ActionBar>
+
+      {onRevert && (
+        <RevertStageDialog
+          open={showRevert}
+          stage="metadata"
+          isReverting={Boolean(isReverting)}
+          onOpenChange={setShowRevert}
+          onConfirm={() => {
+            setShowRevert(false);
+            onRevert();
+          }}
+        />
+      )}
     </IngestionShell>
   );
 }
