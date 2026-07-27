@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   Bot,
   CircleHelp,
   Database,
+  Download,
   ExternalLink,
   FileText,
   FolderTree,
@@ -51,10 +53,7 @@ import {
 } from "@/core/retrieval";
 import { cn } from "@/lib/utils";
 import { CitationSourceDialog } from "./citation-source-dialog";
-import {
-  buildKnowledgeChatHistory,
-  getCitationFolder,
-} from "./chat-utils";
+import { buildKnowledgeChatHistory, getCitationFolder } from "./chat-utils";
 import {
   buildKnowledgeScopePayload,
   flattenKnowledgeScopes,
@@ -79,17 +78,24 @@ function messageId(role: TChatMessage["role"]): string {
 
 function KnowledgeSourceList({
   response,
+  downloadingDocumentId,
   onOpenDocument,
+  onDownloadDocument,
   onViewSource,
 }: {
   response: TKnowledgeChatResponse;
+  downloadingDocumentId: string | null;
   onOpenDocument: (documentId: string) => void;
+  onDownloadDocument: (citation: TGroundedCitation) => void;
   onViewSource: (citation: TGroundedCitation) => void;
 }) {
   if (response.abstained || response.citations.length === 0) return null;
 
   return (
-    <section className="mt-5 border-t border-indigo-100 pt-4" aria-label="Sources">
+    <section
+      className="mt-5 border-t border-indigo-100 pt-4"
+      aria-label="Sources"
+    >
       <div className="mb-3 flex items-center gap-2">
         <ShieldCheck className="size-4 text-emerald-600" />
         <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-gray-600">
@@ -115,7 +121,8 @@ function KnowledgeSourceList({
                   {citation.documentFilename}
                 </p>
                 <p className="mt-1 text-[11px] font-medium text-gray-500">
-                  Folder: {getCitationFolder(
+                  Folder:{" "}
+                  {getCitationFolder(
                     citation.sourceRelativePaths,
                     citation.documentFilename,
                   )}
@@ -146,14 +153,20 @@ function KnowledgeSourceList({
                     View source
                   </button>
                 )}
+
                 <button
                   type="button"
-                  onClick={() => onOpenDocument(citation.documentId)}
-                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700"
+                  onClick={() => onDownloadDocument(citation)}
+                  disabled={downloadingDocumentId === citation.documentId}
+                  title="Download the source file"
+                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <FileText className="size-3" />
-                  Open file
-                  <ExternalLink className="size-3" />
+                  {downloadingDocumentId === citation.documentId ? (
+                    <LoaderCircle className="size-3 animate-spin" />
+                  ) : (
+                    <Download className="size-3" />
+                  )}
+                  Download file
                 </button>
               </div>
             </div>
@@ -166,11 +179,15 @@ function KnowledgeSourceList({
 
 function ChatMessage({
   message,
+  downloadingDocumentId,
   onOpenDocument,
+  onDownloadDocument,
   onViewSource,
 }: {
   message: TChatMessage;
+  downloadingDocumentId: string | null;
   onOpenDocument: (documentId: string) => void;
+  onDownloadDocument: (citation: TGroundedCitation) => void;
   onViewSource: (citation: TGroundedCitation) => void;
 }) {
   const isAssistant = message.role === "assistant";
@@ -197,8 +214,8 @@ function ChatMessage({
             ? needsClarification
               ? "border border-blue-200 bg-blue-50"
               : abstained
-              ? "border border-amber-200 bg-amber-50"
-              : "border border-gray-200 bg-white"
+                ? "border border-amber-200 bg-amber-50"
+                : "border border-gray-200 bg-white"
             : "bg-indigo-600 text-white",
         )}
       >
@@ -248,7 +265,9 @@ function ChatMessage({
         {message.response && (
           <KnowledgeSourceList
             response={message.response}
+            downloadingDocumentId={downloadingDocumentId}
             onOpenDocument={onOpenDocument}
+            onDownloadDocument={onDownloadDocument}
             onViewSource={onViewSource}
           />
         )}
@@ -278,6 +297,26 @@ export default function KnowledgeChatPage() {
   const [error, setError] = useState("");
   const [sourceCitation, setSourceCitation] =
     useState<TGroundedCitation | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<
+    string | null
+  >(null);
+
+  const downloadCitationSource = async (citation: TGroundedCitation) => {
+    if (downloadingDocumentId) return;
+    setDownloadingDocumentId(citation.documentId);
+    try {
+      const response = await backendApi.get<{ url: string; filename: string }>(
+        `/documents/${citation.documentId}/source-url`,
+      );
+      window.open(response.url, "_blank", "noopener,noreferrer");
+    } catch (downloadError) {
+      toast.error(
+        getApiErrorMessage(downloadError, "Could not download this source."),
+      );
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -314,7 +353,11 @@ export default function KnowledgeChatPage() {
         setKnowledgeGroups(mappedGroups);
         setScopeValue(
           (current) =>
-            current || grindingGroup?.value || grindingDataset?.value || scopes[0]?.value || "",
+            current ||
+            grindingGroup?.value ||
+            grindingDataset?.value ||
+            scopes[0]?.value ||
+            "",
         );
       } catch (requestError) {
         if (!cancelled) {
@@ -439,7 +482,11 @@ export default function KnowledgeChatPage() {
                   <Database className="size-3.5" />
                 )}
                 <SelectValue
-                  placeholder={loadingKnowledge ? "Loading knowledge..." : "Select knowledge scope"}
+                  placeholder={
+                    loadingKnowledge
+                      ? "Loading knowledge..."
+                      : "Select knowledge scope"
+                  }
                 />
               </SelectTrigger>
               <SelectContent>
@@ -492,8 +539,8 @@ export default function KnowledgeChatPage() {
               </h2>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-500">
                 Ask about equipment, operating procedures, maintenance, safety,
-                components, or relationships. Every supported answer links to its
-                exact source file and folder.
+                components, or relationships. Every supported answer links to
+                its exact source file and folder.
               </p>
               <div className="mt-7 grid gap-3 text-left md:grid-cols-3">
                 {STARTER_QUESTIONS.map((question) => (
@@ -524,7 +571,13 @@ export default function KnowledgeChatPage() {
             <ChatMessage
               key={message.id}
               message={message}
-              onOpenDocument={(documentId) => navigate(`/documents/${documentId}`)}
+              downloadingDocumentId={downloadingDocumentId}
+              onOpenDocument={(documentId) =>
+                navigate(`/documents/${documentId}`)
+              }
+              onDownloadDocument={(citation) =>
+                void downloadCitationSource(citation)
+              }
               onViewSource={setSourceCitation}
             />
           ))}
