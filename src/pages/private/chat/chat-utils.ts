@@ -21,6 +21,15 @@ export function buildKnowledgeChatHistory(
     .slice(-boundedLimit);
 }
 
+/**
+ * Only PDFs can be opened in the in-app viewer; every other source file is
+ * downloaded instead, so the cited filename decides which action the source
+ * card offers.
+ */
+export function isPdfSourceFile(filename: string): boolean {
+  return filename.trim().toLocaleLowerCase().endsWith(".pdf");
+}
+
 export function getCitationFolder(
   paths: string[],
   filename: string,
