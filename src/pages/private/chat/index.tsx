@@ -9,8 +9,6 @@ import {
   CircleHelp,
   Database,
   Download,
-  ExternalLink,
-  FileText,
   FolderTree,
   Highlighter,
   LoaderCircle,
@@ -79,7 +77,6 @@ function messageId(role: TChatMessage["role"]): string {
 function KnowledgeSourceList({
   response,
   downloadingDocumentId,
-  onOpenDocument,
   onDownloadDocument,
   onViewSource,
 }: {

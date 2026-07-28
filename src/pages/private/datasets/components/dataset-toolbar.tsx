@@ -1,4 +1,4 @@
-import { LayoutGrid, List, Plus, Search, X } from "lucide-react";
+import { ArchiveRestore, LayoutGrid, List, Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   DatasetStatusCounts,
@@ -14,6 +14,7 @@ type DatasetToolbarProps = {
   onStatusFilterChange: (value: DatasetStatusFilter) => void;
   onViewChange: (view: DatasetView) => void;
   onCreate: () => void;
+  onImport: () => void;
 };
 
 export function DatasetToolbar({
@@ -25,6 +26,7 @@ export function DatasetToolbar({
   onStatusFilterChange,
   onViewChange,
   onCreate,
+  onImport,
 }: DatasetToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -104,8 +106,17 @@ export function DatasetToolbar({
 
       <button
         type="button"
+        onClick={onImport}
+        className="ml-auto flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-800"
+      >
+        <ArchiveRestore className="size-4" />
+        Import
+      </button>
+
+      <button
+        type="button"
         onClick={onCreate}
-        className="ml-auto flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200"
+        className="flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-200"
       >
         <Plus className="size-4" />
         New Dataset

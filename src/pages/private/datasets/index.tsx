@@ -10,6 +10,7 @@ import {
   mapBackendDataset,
 } from "@/core/datasets";
 import { CreateDatasetModal } from "./components/create-dataset-modal";
+import { ImportDatasetDialog } from "./components/import-dataset-dialog";
 import { DatasetCard } from "./components/dataset-card";
 import { DatasetListTable } from "./components/dataset-list-table";
 import {
@@ -32,6 +33,7 @@ export default function DatasetsPage() {
   const [view, setView] = useState<DatasetView>("grid");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TDataset | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [statusFilter, setStatusFilter] =
@@ -151,6 +153,7 @@ export default function DatasetsPage() {
             onStatusFilterChange={setStatusFilter}
             onViewChange={setView}
             onCreate={() => setCreateOpen(true)}
+            onImport={() => setImportOpen(true)}
           />
 
           {error && !isLoading && (
@@ -215,6 +218,30 @@ export default function DatasetsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreate={handleCreateDataset}
+      />
+
+      <ImportDatasetDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={(job) => {
+          const importedName =
+            typeof job.dataset_name === "string" && job.dataset_name
+              ? `"${job.dataset_name}"`
+              : "Dataset";
+          toast.success(`${importedName} imported.`);
+          const warnings = Array.isArray(job.result?.warnings)
+            ? (job.result.warnings as string[])
+            : [];
+          if (warnings.length > 0) {
+            toast.warning(
+              `Import finished with ${warnings.length} warning${
+                warnings.length !== 1 ? "s" : ""
+              }.`,
+              { description: warnings[0], duration: 10000 },
+            );
+          }
+          setReloadKey((current) => current + 1);
+        }}
       />
 
       <DeleteDatasetDialog

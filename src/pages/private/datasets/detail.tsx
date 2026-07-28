@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { Button } from "@/components/ui/button";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
+import {
+  getTransferDownload,
+  getTransferStageLabel,
+  pollTransferJob,
+  startDatasetExport,
+} from "@/core/dataset-transfer";
 import {
   type TBackendDataset,
   type TDataset,
@@ -18,6 +25,7 @@ import {
   ArrowLeft,
   Calendar,
   Database,
+  Download,
   FileText,
   Info,
   Loader2,
@@ -54,6 +62,47 @@ export default function DatasetDetailPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  const [exportStage, setExportStage] = useState<string | null>(null);
+
+  const handleExport = async () => {
+    if (!id || exportStage !== null) {
+      return;
+    }
+    setExportStage("Starting export");
+    try {
+      const startedJob = await startDatasetExport(id);
+      const job = await pollTransferJob(startedJob.id, (currentJob) => {
+        setExportStage(getTransferStageLabel(currentJob));
+      });
+      if (job.status === "failed") {
+        toast.error(job.error || "Export failed.");
+        return;
+      }
+      const warnings = Array.isArray(job.result?.warnings)
+        ? (job.result.warnings as string[])
+        : [];
+      if (warnings.length > 0) {
+        toast.warning(
+          `Archive is incomplete: ${warnings.length} file${
+            warnings.length !== 1 ? "s" : ""
+          } could not be exported.`,
+          { description: warnings[0], duration: 10000 },
+        );
+      }
+      const { download_url } = await getTransferDownload(job.id);
+      const anchor = document.createElement("a");
+      anchor.href = download_url;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      toast.success("Dataset archive ready — download started.");
+    } catch (exportError) {
+      toast.error(getApiErrorMessage(exportError, "Could not export dataset."));
+    } finally {
+      setExportStage(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -118,10 +167,31 @@ export default function DatasetDetailPage() {
               Back to datasets
             </Button>
 
-            <Button className="gap-2" onClick={() => navigate("/ingestions/new")}>
-              <Upload className="size-4" />
-              Upload File
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => void handleExport()}
+                disabled={exportStage !== null || !dataset}
+              >
+                {exportStage !== null ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    {exportStage}…
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-4" />
+                    Export
+                  </>
+                )}
+              </Button>
+
+              <Button className="gap-2" onClick={() => navigate("/ingestions/new")}>
+                <Upload className="size-4" />
+                Upload File
+              </Button>
+            </div>
           </div>
 
           {isLoading ? (
