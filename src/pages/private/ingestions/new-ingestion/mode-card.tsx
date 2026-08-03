@@ -1,110 +1,91 @@
+import { Check, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { IconComponent } from "./types";
+import type { IconComponent, IngestionMode } from "./types";
 
 export function ModeCard({
+  mode,
   selected,
   onSelect,
-  accent,
   icon: Icon,
-  badge,
+  tag,
   title,
   description,
   time,
   disabled = false,
 }: {
+  mode: IngestionMode;
   selected: boolean;
   onSelect: () => void;
-  accent: "indigo" | "violet";
   icon: IconComponent;
-  badge: string;
+  /** Optional qualifier, e.g. "Recommended". Omitted rather than faked. */
+  tag?: string;
   title: string;
   description: string;
   time: string;
   disabled?: boolean;
 }) {
-  const colors = {
-    indigo: {
-      border: selected
-        ? "border-indigo-300"
-        : "border-gray-200 hover:border-indigo-200",
-      bg: selected ? "bg-indigo-50/70" : "bg-white hover:bg-indigo-50/30",
-      ring: selected ? "ring-1 ring-indigo-200" : "",
-      iconBg: selected ? "bg-indigo-100" : "bg-gray-100",
-      iconColor: selected ? "text-indigo-600" : "text-gray-400",
-      badge: selected
-        ? "bg-indigo-100 text-indigo-700"
-        : "bg-gray-100 text-gray-400",
-      time: selected ? "text-indigo-500" : "text-gray-400",
-    },
-    violet: {
-      border: selected
-        ? "border-violet-300"
-        : "border-gray-200 hover:border-violet-200",
-      bg: selected ? "bg-violet-50/70" : "bg-white hover:bg-violet-50/30",
-      ring: selected ? "ring-1 ring-violet-200" : "",
-      iconBg: selected ? "bg-violet-100" : "bg-gray-100",
-      iconColor: selected ? "text-violet-600" : "text-gray-400",
-      badge: selected
-        ? "bg-violet-100 text-violet-700"
-        : "bg-gray-100 text-gray-400",
-      time: selected ? "text-violet-500" : "text-gray-400",
-    },
-  }[accent];
-
   return (
     <button
       type="button"
+      role="radio"
+      aria-checked={selected}
+      // Roving tabindex: the group takes one tab stop, arrows move within it.
+      tabIndex={selected ? 0 : -1}
+      data-mode={mode}
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        "flex flex-col items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all w-full",
-        colors.border,
-        colors.bg,
-        colors.ring,
-        disabled && "opacity-70",
+        "group relative flex w-full flex-col rounded-xl border p-4 text-left transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
+        selected
+          ? "border-indigo-500 bg-indigo-50/50"
+          : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50",
+        disabled && "cursor-not-allowed opacity-60",
       )}
     >
-      <div className="flex items-center justify-between w-full">
-        <div
-          className={cn(
-            "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
-            colors.iconBg,
-          )}
-        >
-          <Icon className={cn("size-4.5 transition-colors", colors.iconColor)} />
-        </div>
+      <div className="flex items-center gap-2.5">
         <span
           className={cn(
-            "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide transition-colors",
-            colors.badge,
+            "flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+            selected ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500",
           )}
         >
-          {badge}
+          <Icon className="size-4" />
         </span>
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-sm font-bold text-gray-900">{title}</p>
-        <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-      </div>
-
-      <div className="flex items-center gap-1.5 mt-auto pt-1 w-full">
-        <div
+        <span className="min-w-0 flex-1 text-sm font-semibold text-gray-900">
+          {title}
+        </span>
+        {tag && !selected && (
+          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            {tag}
+          </span>
+        )}
+        <span
           className={cn(
-            "w-1 h-1 rounded-full flex-shrink-0 transition-colors",
+            "flex size-5 shrink-0 items-center justify-center rounded-full transition-colors",
             selected
-              ? accent === "indigo"
-                ? "bg-indigo-400"
-                : "bg-violet-400"
-              : "bg-gray-300",
+              ? "bg-indigo-600 text-white"
+              : "border border-gray-300 bg-white",
           )}
-        />
-        <span
-          className={cn("text-[11px] font-medium transition-colors", colors.time)}
+          aria-hidden
         >
-          Avg. time: {time}
+          {selected && <Check className="size-3" strokeWidth={3} />}
         </span>
       </div>
+
+      <p className="mt-3 text-xs leading-relaxed text-gray-600">{description}</p>
+
+      <p
+        className={cn(
+          "mt-3 flex items-center gap-1.5 border-t pt-3 text-[11px] font-medium",
+          selected
+            ? "border-indigo-100 text-indigo-600"
+            : "border-gray-100 text-gray-400",
+        )}
+      >
+        <Clock className="size-3" />
+        {time}
+      </p>
     </button>
   );
 }

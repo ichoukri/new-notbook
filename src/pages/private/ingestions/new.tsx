@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
@@ -18,7 +23,12 @@ import {
   isLiveInPipeline,
 } from "@/core/ingestions";
 import axios from "axios";
-import { AlertCircle, ArrowRight, ClipboardList, Zap } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  ClipboardList,
+  Zap,
+} from "lucide-react";
 import {
   buildIngestionBatchUrl,
   buildIngestionReviewUrl,
@@ -27,6 +37,7 @@ import {
   saveIngestionBatch,
 } from "@/core/batches";
 import { DatasetPicker } from "./new-ingestion/dataset-picker";
+import { EmbeddingSettingsPanel } from "./new-ingestion/embedding-settings-panel";
 import { Field } from "./new-ingestion/field";
 import { FilePicker } from "./new-ingestion/file-picker";
 import {
@@ -34,10 +45,14 @@ import {
   GuidedBatchDialog,
 } from "./new-ingestion/guided-batch-dialog";
 import { ModeCard } from "./new-ingestion/mode-card";
-import { ReadinessSteps } from "./new-ingestion/readiness-steps";
 import { ResultSummary } from "./new-ingestion/result-summary";
+import { RunSummary } from "./new-ingestion/run-summary";
 import { StartIngestionButton } from "./new-ingestion/start-ingestion-button";
-import type { IngestionMode, UploadItem } from "./new-ingestion/types";
+import type {
+  EmbeddingProvider,
+  IngestionMode,
+  UploadItem,
+} from "./new-ingestion/types";
 import {
   UPLOAD_CONCURRENCY,
   buildUploadFileMetadata,
@@ -53,6 +68,8 @@ export default function NewIngestionPage() {
   const [selectedDataset, setSelectedDataset] = useState("");
   const [items, setItems] = useState<UploadItem[]>([]);
   const [mode, setMode] = useState<IngestionMode>("auto");
+  const [embeddingProvider, setEmbeddingProvider] =
+    useState<EmbeddingProvider>("openai");
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [datasetsError, setDatasetsError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -243,6 +260,7 @@ export default function NewIngestionPage() {
         ...uploadMetadata,
         sha256,
         mode,
+        embedding_provider: embeddingProvider,
       });
 
       const isDuplicate =
@@ -526,117 +544,185 @@ export default function NewIngestionPage() {
   ).length;
   const canStart =
     Boolean(selectedDataset) && items.length > 0 && !isSubmitting;
-  const filledCount = [
-    Boolean(selectedDataset),
-    items.length > 0,
-    true,
-  ].filter(Boolean).length;
+  const selectedDatasetName =
+    datasets.find((dataset) => dataset.id === selectedDataset)?.name ?? null;
 
-  const hint =
-    !selectedDataset
-      ? "Create or select a dataset to continue"
-      : items.length === 0
-        ? "Add files or a folder to continue"
-        : `${mode === "guided" ? "Guided" : "Auto"} mode is ready`;
+  const hint = !selectedDataset
+    ? "Select a dataset to continue"
+    : items.length === 0
+      ? "Add files or a folder to continue"
+      : "Ready to start";
+
+  // Two-option radio group: arrow keys move the selection and carry focus with
+  // it, which is what a radiogroup is expected to do from the keyboard.
+  const handleModeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const isArrow = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(
+      event.key,
+    );
+    if (isSubmitting || !isArrow) return;
+
+    event.preventDefault();
+    const next: IngestionMode = mode === "auto" ? "guided" : "auto";
+    setMode(next);
+    event.currentTarget
+      .querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)
+      ?.focus();
+  };
 
   return (
-    <div className="flex flex-col flex-1 overflow-auto bg-gray-50/60">
+    <div className="flex flex-col flex-1 overflow-auto bg-white">
       <Topbar title="New Ingestion" breadcrumbs={[{ label: "Ingestions" }]} />
 
-      <main className="flex-1 flex flex-col items-center px-6 pt-6 pb-10">
-        <div className="text-center mb-8">
-          <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">
-            New Ingestion
-          </h1>
-          <p className="text-sm text-gray-500 mt-2">
-            Upload one or many files (or a whole folder), choose a dataset, and
-            start the ingestion pipeline.
-          </p>
+      <main className="flex flex-1 flex-col">
+        <div className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
+          {/* The page is full-bleed, but the form column is not: past ~768px a
+              text field or drop zone stops reading as one object. */}
+          <div className="min-w-0 px-5 py-6 sm:px-8">
+            <div className="mx-auto w-full max-w-3xl space-y-7">
+              <Field
+                step={1}
+                label="Dataset"
+                hint="Where these documents will be stored and searched."
+                done={Boolean(selectedDataset)}
+              >
+                <DatasetPicker
+                  datasets={datasets}
+                  value={selectedDataset}
+                  onChange={setSelectedDataset}
+                  isLoading={isLoadingDatasets}
+                  error={datasetsError}
+                  onOpenManage={() => navigate("/datasets")}
+                />
+              </Field>
+
+              <Field
+                step={2}
+                label="Files"
+                hint="Drop individual files or a whole folder."
+                done={items.length > 0}
+              >
+                <FilePicker
+                  items={items}
+                  totalSize={totalSize}
+                  completedCount={completedCount}
+                  isSubmitting={isSubmitting}
+                  onAddFiles={addFiles}
+                  onClear={clearItems}
+                  onRemove={removeItems}
+                  onOpenItemStatus={(item) =>
+                    navigate(
+                      `/ingestions/status?document_id=${item.documentId}&dataset_id=${item.datasetId ?? selectedDataset}`,
+                    )
+                  }
+                />
+              </Field>
+
+              <Field
+                step={3}
+                label="Ingestion mode"
+                hint="How much of the pipeline you want to approve yourself."
+                done={items.length > 0 && Boolean(selectedDataset)}
+              >
+                <div
+                  role="radiogroup"
+                  aria-label="Ingestion mode"
+                  onKeyDown={handleModeKeyDown}
+                  className="grid gap-3 sm:grid-cols-2"
+                >
+                  <ModeCard
+                    mode="auto"
+                    selected={mode === "auto"}
+                    onSelect={() => setMode("auto")}
+                    icon={Zap}
+                    tag="Recommended"
+                    title="Auto"
+                    description="Runs end to end without stopping — extract, chunk, summarize, index and publish."
+                    time={
+                      items.length > 1
+                        ? `~2 min per document · ${items.length} documents`
+                        : "~2 min"
+                    }
+                    disabled={isSubmitting}
+                  />
+                  <ModeCard
+                    mode="guided"
+                    selected={mode === "guided"}
+                    onSelect={() => setMode("guided")}
+                    icon={ClipboardList}
+                    title="Guided"
+                    description="You approve every stage — extract, chunk, summarize, knowledge graph, embed and publish."
+                    time={
+                      items.length > 1
+                        ? `~5–10 min per document · ${items.length} documents`
+                        : "~5–10 min"
+                    }
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </Field>
+
+              {datasetsError && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <p>{datasetsError}</p>
+                </div>
+              )}
+
+              {finished && !isSubmitting && items.length > 0 && (
+                <ResultSummary
+                  items={items}
+                  startedCount={startedCount}
+                  duplicateCount={duplicateCount}
+                  failedCount={failedCount}
+                  cancelledCount={cancelledCount}
+                  onRetryFailed={() => void retryFailed()}
+                />
+              )}
+            </div>
+          </div>
+
+          <aside className="min-w-0 border-t border-gray-200 bg-gray-50/60 px-5 py-6 sm:px-6 lg:border-l lg:border-t-0">
+            <EmbeddingSettingsPanel
+              value={embeddingProvider}
+              onChange={setEmbeddingProvider}
+              disabled={isSubmitting}
+            />
+          </aside>
         </div>
 
-        <div className="w-full max-w-[520px] space-y-6">
-          <Field label="Dataset" done={Boolean(selectedDataset)}>
-            <DatasetPicker
-              datasets={datasets}
-              value={selectedDataset}
-              onChange={setSelectedDataset}
-              isLoading={isLoadingDatasets}
-              error={datasetsError}
-              onOpenManage={() => navigate("/datasets")}
-            />
-          </Field>
+        {/* Sticks to the viewport so Start stays reachable however long the
+            file list grows. */}
+        <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-gray-200 bg-white/95 px-5 py-3.5 backdrop-blur sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              disabled={isSubmitting}
+              className="h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
 
-          <Field label="Files" done={items.length > 0}>
-            <FilePicker
-              items={items}
+            {finished && items.length > 0 && !isSubmitting && (
+              <button
+                type="button"
+                onClick={() => navigate("/documents")}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
+              >
+                View documents
+                <ArrowRight className="size-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="w-full space-y-2 lg:w-115">
+            <RunSummary
+              datasetName={selectedDatasetName}
+              fileCount={items.length}
               totalSize={totalSize}
-              completedCount={completedCount}
-              isSubmitting={isSubmitting}
-              onAddFiles={addFiles}
-              onClear={clearItems}
-              onRemove={removeItems}
-              onOpenItemStatus={(item) =>
-                navigate(
-                  `/ingestions/status?document_id=${item.documentId}&dataset_id=${item.datasetId ?? selectedDataset}`,
-                )
-              }
+              provider={embeddingProvider}
+              mode={mode}
             />
-          </Field>
-
-          <Field label="Ingestion Mode" done>
-            <div className="grid grid-cols-2 gap-3">
-              <ModeCard
-                selected={mode === "auto"}
-                onSelect={() => setMode("auto")}
-                accent="indigo"
-                icon={Zap}
-                badge="Backend Ready"
-                title="Auto Mode"
-                description="Uploads, extracts, chunks, summarizes, and indexes the document end to end."
-                time="~2 min"
-              />
-              <ModeCard
-                selected={mode === "guided"}
-                onSelect={() => setMode("guided")}
-                accent="violet"
-                icon={ClipboardList}
-                badge="Backend Ready"
-                title="Guided Mode"
-                description={
-                  items.length > 1
-                    ? `Review each stage of all ${items.length} documents: extract, chunk, summarize, approve the knowledge graph, embed, and publish.`
-                    : "Review each stage: extract, chunk, summarize, approve the knowledge graph, embed, and publish."
-                }
-                time={
-                  items.length > 1
-                    ? `~5–10 min × ${items.length} documents`
-                    : "~5–10 min"
-                }
-              />
-            </div>
-          </Field>
-
-          {datasetsError && (
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <AlertCircle className="size-4 mt-0.5 flex-shrink-0" />
-              <p>{datasetsError}</p>
-            </div>
-          )}
-
-          {finished && !isSubmitting && items.length > 0 && (
-            <ResultSummary
-              items={items}
-              startedCount={startedCount}
-              duplicateCount={duplicateCount}
-              failedCount={failedCount}
-              cancelledCount={cancelledCount}
-              onRetryFailed={() => void retryFailed()}
-            />
-          )}
-
-          <div className="pt-1 space-y-3">
-            <ReadinessSteps filledCount={filledCount} />
-
             <StartIngestionButton
               canStart={canStart}
               isSubmitting={isSubmitting}
@@ -648,17 +734,6 @@ export default function NewIngestionPage() {
               onStart={requestStart}
               onCancel={cancelUploads}
             />
-
-            {finished && items.length > 0 && !isSubmitting && (
-              <button
-                type="button"
-                onClick={() => navigate("/documents")}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
-              >
-                View documents
-                <ArrowRight className="size-4" />
-              </button>
-            )}
           </div>
         </div>
       </main>

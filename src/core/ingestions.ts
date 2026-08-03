@@ -3,6 +3,7 @@ import { mapSourceRelativePaths } from "@/core/source-provenance";
 import type { TPdfRegion } from "@/core/retrieval";
 
 export type TDocumentMode = "auto" | "guided";
+export type TEmbeddingProvider = "openai" | "qwen";
 
 export type TBackendDocument = {
   id: string;
@@ -21,6 +22,8 @@ export type TBackendDocument = {
   dataset_ids: string[];
   processing_status: string;
   mode?: TDocumentMode;
+  embedding_provider?: TEmbeddingProvider;
+  embedding_profile?: string | null;
   processing_details?: Record<string, unknown> | null;
   doc_metadata?: Record<string, unknown> | null;
   access_policy?: Record<string, unknown> | null;
@@ -80,6 +83,7 @@ export type TBackendFinalizeRequest = {
   sha256: string;
   content_type: string | null;
   mode?: TDocumentMode;
+  embedding_provider?: TEmbeddingProvider;
 };
 
 export type TBackendChunk = {

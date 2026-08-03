@@ -30,7 +30,7 @@ export function ResultSummary({
   return (
     <div
       className={cn(
-        "rounded-2xl border px-4 py-3 text-sm",
+        "rounded-xl border px-4 py-3 text-sm",
         failedCount > 0 || nothingStarted
           ? "border-amber-200 bg-amber-50"
           : "border-emerald-200 bg-emerald-50",
@@ -89,11 +89,11 @@ export function ResultSummary({
                 key={folder.path}
                 className="flex items-center gap-1.5 text-xs text-gray-500"
               >
-                <FolderX className="size-3.5 flex-shrink-0 text-red-400" />
+                <FolderX className="size-3.5 shrink-0 text-red-400" />
                 <span className="truncate font-medium text-gray-700">
                   {folder.path}
                 </span>
-                <span className="flex-shrink-0 text-gray-400">
+                <span className="shrink-0 text-gray-400">
                   {folder.failed} of {folder.total} failed
                 </span>
               </li>

@@ -47,19 +47,9 @@ import {
   type ScanProgress,
 } from "./upload-files";
 
-const FILE_TYPES = [
-  "PDF",
-  "DOCX",
-  "TXT",
-  "CSV",
-  "JSON",
-  "JSONL",
-  "MD",
-  "HTML",
-  "PPTX",
-  "XLSX",
-  "Images",
-];
+/** Named in one line rather than a wall of chips — it is reference, not choice. */
+const FILE_TYPE_SUMMARY =
+  "PDF, DOCX, PPTX, XLSX, CSV, JSON, MD, HTML, TXT and images";
 
 /** Indent stops growing past this depth so filenames keep their width. */
 const MAX_INDENT_DEPTH = 4;
@@ -234,15 +224,15 @@ export function FilePicker({
         onClick={isScanning ? undefined : openFileBrowser}
         onKeyDown={isScanning ? undefined : handleZoneKeyDown}
         className={cn(
-          "relative select-none overflow-hidden rounded-2xl border-2 border-dashed transition-all",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2",
+          "relative select-none overflow-hidden rounded-xl border border-dashed transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
           isScanning
-            ? "cursor-default border-indigo-300 bg-indigo-50/40"
+            ? "cursor-default border-indigo-400 bg-indigo-50/40"
             : "cursor-pointer",
           !isScanning &&
             (dragOver
-              ? "border-indigo-400 bg-indigo-50/60"
-              : "border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/20"),
+              ? "border-indigo-500 bg-indigo-50/60"
+              : "border-gray-300 bg-white hover:border-indigo-400 hover:bg-gray-50"),
         )}
       >
         {isScanning ? (
@@ -323,38 +313,41 @@ function EmptyFilePicker({
   onBrowseFolder: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-10 text-center">
+    <div className="flex flex-col items-center justify-center px-6 py-8 text-center">
       <div
         className={cn(
-          "mb-4 flex size-14 items-center justify-center rounded-2xl transition-all",
-          dragOver ? "scale-110 bg-indigo-100" : "bg-gray-100",
+          "mb-3 flex size-11 items-center justify-center rounded-xl transition-colors",
+          dragOver ? "bg-indigo-100" : "bg-gray-100",
         )}
       >
         <Upload
           className={cn(
-            "size-6 transition-colors",
-            dragOver ? "text-indigo-500" : "text-gray-400",
+            "size-5 transition-colors",
+            dragOver ? "text-indigo-600" : "text-gray-400",
           )}
         />
       </div>
       <p
         className={cn(
           "text-sm font-semibold transition-colors",
-          dragOver ? "text-indigo-700" : "text-gray-700",
+          dragOver ? "text-indigo-700" : "text-gray-800",
         )}
       >
         {dragOver ? "Release to add" : "Drop files or a folder here"}
       </p>
-      <div className="mt-3 flex items-center gap-2">
+      <p className="mt-1 text-xs text-gray-500">
+        {FILE_TYPE_SUMMARY} · max {env.VITE_MAX_UPLOAD_MB} MB per file
+      </p>
+      <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
           onClick={(event) => {
             event.stopPropagation();
             onBrowseFiles();
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
         >
-          <FileText className="size-3.5" /> Browse files
+          <FileText className="size-3.5 text-gray-400" /> Browse files
         </button>
         <button
           type="button"
@@ -362,24 +355,13 @@ function EmptyFilePicker({
             event.stopPropagation();
             onBrowseFolder();
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
         >
-          <FolderOpen className="size-3.5" /> Browse folder
+          <FolderOpen className="size-3.5 text-gray-400" /> Browse folder
         </button>
       </div>
-      <div className="mt-5 flex flex-wrap justify-center gap-1.5">
-        {FILE_TYPES.map((type) => (
-          <span
-            key={type}
-            className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500"
-          >
-            {type}
-          </span>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-gray-400">
-        Max {env.VITE_MAX_UPLOAD_MB} MB per file · folders are scanned
-        recursively · hidden and system folders are skipped
+      <p className="mt-3 text-[11px] text-gray-400">
+        Folders are scanned recursively · hidden and system folders are skipped
       </p>
     </div>
   );
@@ -393,8 +375,8 @@ function CompactFilePicker({
   onBrowseFolder: () => void;
 }) {
   return (
-    <div className="flex items-center justify-center gap-3 px-4 py-3 text-xs font-medium text-gray-500">
-      <Upload className="size-4 text-gray-400" />
+    <div className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium text-gray-500">
+      <Upload className="size-3.5 text-gray-400" />
       Drop more, or
       <button
         type="button"
@@ -402,18 +384,18 @@ function CompactFilePicker({
           event.stopPropagation();
           onBrowseFiles();
         }}
-        className="text-indigo-600 underline underline-offset-2 hover:text-indigo-700"
+        className="font-semibold text-indigo-600 transition-colors hover:text-indigo-700"
       >
         add files
       </button>
-      /
+      <span className="text-gray-300">·</span>
       <button
         type="button"
         onClick={(event) => {
           event.stopPropagation();
           onBrowseFolder();
         }}
-        className="text-indigo-600 underline underline-offset-2 hover:text-indigo-700"
+        className="font-semibold text-indigo-600 transition-colors hover:text-indigo-700"
       >
         add a folder
       </button>
@@ -503,39 +485,50 @@ function SelectedFilesPanel({
   const rows = flattenVisible(tree, expanded);
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 text-xs">
-        <span className="font-semibold text-gray-700">
-          {items.length} file{items.length === 1 ? "" : "s"}
-          <span className="font-normal text-gray-400">
-            {" "}
-            · {formatFileSize(totalSize)}
-            {isSubmitting && ` · ${completedCount}/${items.length} done`}
+    <div className="mt-2.5 overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="relative border-b border-gray-100 bg-gray-50/70 px-3.5 py-2 text-xs">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold text-gray-700">
+            {items.length} file{items.length === 1 ? "" : "s"}
+            <span className="font-normal text-gray-400">
+              {" "}
+              · {formatFileSize(totalSize)}
+              {isSubmitting && ` · ${completedCount}/${items.length} done`}
+            </span>
           </span>
-        </span>
-        <div className="flex items-center gap-3">
-          {hasFolders && (
+          <div className="flex items-center gap-1">
+            {hasFolders && (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpanded(allExpanded ? new Set() : new Set(folderPaths))
+                }
+                className="rounded-md px-2 py-1 font-medium text-gray-500 transition-colors hover:bg-gray-200/60 hover:text-gray-900"
+              >
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </button>
+            )}
             <button
               type="button"
-              onClick={() =>
-                setExpanded(allExpanded ? new Set() : new Set(folderPaths))
-              }
-              className="text-gray-400 transition-colors hover:text-indigo-600"
+              onClick={onClear}
+              disabled={isSubmitting}
+              className="rounded-md px-2 py-1 font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-40"
             >
-              {allExpanded ? "Collapse all" : "Expand all"}
+              Clear all
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onClear}
-            disabled={isSubmitting}
-            className="text-gray-400 transition-colors hover:text-red-600 disabled:opacity-40"
-          >
-            Clear all
-          </button>
+          </div>
         </div>
+        {isSubmitting && (
+          // Batch-level progress on the list itself, so the count above has a
+          // shape even when the action bar is scrolled out of view.
+          <span
+            className="absolute inset-x-0 bottom-0 h-0.5 bg-indigo-500 transition-[width] duration-200"
+            style={{ width: `${(completedCount / items.length) * 100}%` }}
+            aria-hidden
+          />
+        )}
       </div>
-      <div className="max-h-64 divide-y divide-gray-50 overflow-y-auto">
+      <div className="max-h-64 divide-y divide-gray-100 overflow-y-auto">
         {rows.map(({ node, depth }) =>
           node.kind === "folder" ? (
             <FolderRow
@@ -593,8 +586,8 @@ function FolderRow({
         aria-expanded={expanded}
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
-        <Chevron className="size-4 flex-shrink-0 text-gray-400" />
-        <div className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50">
+        <Chevron className="size-4 shrink-0 text-gray-400" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
           <FolderIcon className="size-4 text-indigo-500" />
         </div>
         <div className="min-w-0 flex-1">
@@ -612,7 +605,7 @@ function FolderRow({
         <button
           type="button"
           onClick={onRemove}
-          className="flex-shrink-0 rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          className="shrink-0 rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
           title={`Remove ${node.fileCount} file${node.fileCount === 1 ? "" : "s"} in ${node.name}`}
         >
           <X className="size-4" />
@@ -658,7 +651,7 @@ function FolderStatusChips({ counts }: { counts: Record<string, number> }) {
   if (chips.length === 0) return null;
 
   return (
-    <span className="flex flex-shrink-0 items-center gap-1">
+    <span className="flex shrink-0 items-center gap-1">
       {chips.map((chip) => (
         <span
           key={chip.key}
@@ -699,7 +692,7 @@ function FileRow({
     >
       <div
         className={cn(
-          "flex size-8 flex-shrink-0 items-center justify-center rounded-lg",
+          "flex size-8 shrink-0 items-center justify-center rounded-lg",
           bgColor,
         )}
       >
@@ -728,7 +721,7 @@ function FileRow({
               event.stopPropagation();
               onOpenItemStatus(item);
             }}
-            className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-700"
             title={
               item.status === "duplicate"
                 ? "Open the existing document's ingestion stages"
@@ -743,7 +736,7 @@ function FileRow({
         <button
           type="button"
           onClick={onRemove}
-          className="flex-shrink-0 rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          className="shrink-0 rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
           title="Remove"
         >
           <X className="size-4" />
@@ -778,7 +771,7 @@ function UploadProgress({
           style={isIndeterminate ? undefined : { width: `${percent}%` }}
         />
       </div>
-      <span className="flex-shrink-0 text-[10px] tabular-nums text-gray-400">
+      <span className="shrink-0 text-[10px] tabular-nums text-gray-400">
         {isIndeterminate
           ? formatFileSize(size)
           : `${formatFileSize(size * (progress ?? 0))} / ${formatFileSize(size)}`}
@@ -791,20 +784,20 @@ function ItemStatusBadge({ item }: { item: UploadItem }) {
   switch (item.status) {
     case "uploading":
       return (
-        <span className="flex flex-shrink-0 items-center gap-1 text-[11px] font-medium text-indigo-600">
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-indigo-600">
           <Loader2 className="size-3.5 animate-spin" /> Uploading
         </span>
       );
     case "done":
       return (
-        <span className="flex flex-shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-600">
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-600">
           <CheckCircle2 className="size-3.5" /> Started
         </span>
       );
     case "duplicate":
       return (
         <span
-          className="flex flex-shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+          className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
           title={item.detail || "This file already exists in this dataset."}
         >
           <Copy className="size-3" /> In dataset
@@ -813,7 +806,7 @@ function ItemStatusBadge({ item }: { item: UploadItem }) {
     case "error":
       return (
         <span
-          className="flex flex-shrink-0 items-center gap-1 text-[11px] font-medium text-red-600"
+          className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-red-600"
           title={item.error}
         >
           <AlertCircle className="size-3.5" /> Failed
@@ -821,13 +814,13 @@ function ItemStatusBadge({ item }: { item: UploadItem }) {
       );
     case "cancelled":
       return (
-        <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
           Cancelled
         </span>
       );
     default:
       return (
-        <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
           Queued
         </span>
       );

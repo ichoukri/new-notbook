@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 
 export type IconComponent = LucideIcon;
 export type IngestionMode = "auto" | "guided";
+export type EmbeddingProvider = "openai" | "qwen";
 export type UploadStatus =
   | "pending"
   | "uploading"

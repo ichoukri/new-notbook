@@ -1,28 +1,44 @@
 import type { ReactNode } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function Field({
+  step,
   label,
+  hint,
   done,
   children,
 }: {
+  /** Position in the form, shown until the step is satisfied. */
+  step: number;
   label: string;
+  hint?: string;
   done: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-          {label}
+    <section className="space-y-3">
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition-colors",
+            done
+              ? "bg-emerald-500 text-white"
+              : "bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-200",
+          )}
+          aria-hidden
+        >
+          {done ? <Check className="size-3.5" strokeWidth={3} /> : step}
         </span>
-        {done && (
-          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
-            <CheckCircle2 className="size-2.5" /> Done
-          </span>
-        )}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {label}
+            <span className="sr-only">{done ? " — complete" : ""}</span>
+          </h2>
+          {hint && <p className="text-xs text-gray-500">{hint}</p>}
+        </div>
       </div>
-      {children}
+      <div className="pl-9">{children}</div>
     </section>
   );
 }
