@@ -6,7 +6,7 @@ import {
   getDocumentUploadedAtLabel,
 } from "@/core/documents";
 import type { TIngestionDocument } from "@/core/ingestions";
-import { CopyButton } from "./copy-control";
+import { CopyButton } from "@/components/app/copy-button";
 import { DocumentSourceLocations } from "./document-source-locations";
 
 type DocumentMetrics = {

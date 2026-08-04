@@ -1,3 +1,4 @@
+import { useRef, type KeyboardEvent } from "react";
 import {
   Ban,
   ChevronLeft,
@@ -19,7 +20,7 @@ type EntityListProps = {
   offset: number;
   limit: number;
   isLoading: boolean;
-  onSelect: (canonicalId: string) => void;
+  onSelect: (canonicalId: string, options?: { replace?: boolean }) => void;
   onPageChange: (offset: number) => void;
 };
 
@@ -33,8 +34,33 @@ export function EntityList({
   onSelect,
   onPageChange,
 }: EntityListProps) {
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const start = total === 0 ? 0 : offset + 1;
   const end = Math.min(offset + entities.length, total);
+  const isInitialLoad = isLoading && entities.length === 0;
+
+  // Arrow keys walk the list the way a mail client does: selection follows
+  // focus, so the neighborhood updates as you move.
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const lastIndex = entities.length - 1;
+    let nextIndex: number | null = null;
+
+    if (event.key === "ArrowDown") nextIndex = Math.min(index + 1, lastIndex);
+    else if (event.key === "ArrowUp") nextIndex = Math.max(index - 1, 0);
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = lastIndex;
+
+    if (nextIndex === null || nextIndex === index) return;
+
+    event.preventDefault();
+    const nextEntity = entities[nextIndex];
+    if (!nextEntity) return;
+
+    // Arrow browsing is transient — it must not push a history entry per
+    // keystroke, or the back button becomes useless.
+    onSelect(nextEntity.canonicalId, { replace: true });
+    itemRefs.current[nextIndex]?.focus();
+  };
 
   return (
     <section className="flex min-h-0 w-[360px] flex-shrink-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -47,6 +73,8 @@ export function EntityList({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {isInitialLoad && <EntityListSkeleton />}
+
         {!isLoading && entities.length === 0 && (
           <div className="flex h-full min-h-48 flex-col items-center justify-center px-6 text-center">
             <div className="mb-3 rounded-2xl bg-gray-100 p-3">
@@ -60,14 +88,26 @@ export function EntityList({
           </div>
         )}
 
-        <div className="space-y-1.5">
-          {entities.map((entity) => {
+        <div
+          className={cn(
+            "space-y-1.5 transition-opacity",
+            // Keep the previous page readable while the next one loads, but
+            // make it obvious it is stale.
+            isLoading && entities.length > 0 && "pointer-events-none opacity-50",
+          )}
+        >
+          {entities.map((entity, index) => {
             const selected = entity.canonicalId === selectedId;
             return (
               <button
                 key={entity.canonicalId}
+                ref={(element) => {
+                  itemRefs.current[index] = element;
+                }}
                 type="button"
+                aria-current={selected}
                 onClick={() => onSelect(entity.canonicalId)}
+                onKeyDown={(event) => handleKeyDown(event, index)}
                 className={cn(
                   "w-full rounded-xl border px-3 py-3 text-left transition-all",
                   selected
@@ -159,5 +199,27 @@ export function EntityList({
         </div>
       </div>
     </section>
+  );
+}
+
+function EntityListSkeleton() {
+  return (
+    <div className="space-y-1.5" aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-xl border border-transparent px-3 py-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 size-8 shrink-0 animate-pulse rounded-lg bg-gray-100" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-3.5 w-2/3 animate-pulse rounded bg-gray-100" />
+              <div className="h-2.5 w-1/2 animate-pulse rounded bg-gray-100" />
+              <div className="h-2.5 w-full animate-pulse rounded bg-gray-50" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

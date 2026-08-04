@@ -111,6 +111,47 @@ export function NeighborhoodPanel({
   const [view, setView] = useState<"graph" | "list">("graph");
 
   if (!selectedEntity) {
+    // A shared link can name an entity that is not on the current list page,
+    // so resolve it from the neighborhood response instead of claiming that
+    // nothing is selected.
+    if (isLoading) {
+      return (
+        <section className="flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-gray-200 bg-white">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Loader2 className="size-4 animate-spin text-indigo-500" />
+            Resolving entity…
+          </div>
+        </section>
+      );
+    }
+
+    if (error) {
+      return (
+        <section className="flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-gray-200 bg-white p-8">
+          <div className="max-w-md rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
+            <AlertTriangle className="mx-auto size-5 text-amber-600" />
+            <h3 className="mt-2 text-sm font-semibold text-amber-900">
+              {error.title}
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+              {error.message}
+            </p>
+            {error.retryable && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={onRetry}
+              >
+                Try again
+              </Button>
+            )}
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white">
         <div className="max-w-sm px-8 text-center">
@@ -122,7 +163,7 @@ export function NeighborhoodPanel({
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-gray-500">
             Relationships stay bounded to one or two hops and always retain their
-            source evidence.
+            source evidence. Use ↑ ↓ in the entity list to move quickly.
           </p>
         </div>
       </section>

@@ -1,4 +1,4 @@
-import { CopyButton } from "./copy-control";
+import { CopyButton } from "@/components/app/copy-button";
 
 export function DocumentSourceLocations({ paths }: { paths: string[] }) {
   if (paths.length === 0) {

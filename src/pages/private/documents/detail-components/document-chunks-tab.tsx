@@ -14,7 +14,7 @@ import {
   type TIngestionChunk,
 } from "@/core/ingestions";
 import { cn } from "@/lib/utils";
-import { copyText } from "./copy-text";
+import { copyText } from "@/lib/copy-text";
 
 export function DocumentChunksTab({
   chunks,
