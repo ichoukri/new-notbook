@@ -149,6 +149,32 @@ export function DatasetPicker({
     }
   };
 
+  // With no datasets the trigger is disabled, which also seals off the "Manage
+  // datasets" link inside the menu — the one action that resolves the problem.
+  // Surface it directly instead of leaving a dead end.
+  if (!isLoading && datasets.length === 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-gray-200">
+          <Database className="size-4 text-gray-400" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-800">No datasets yet</p>
+          <p className="text-xs text-gray-500">
+            {error || "Documents are ingested into a dataset — create one first."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenManage}
+          className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-700"
+        >
+          Create a dataset
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button

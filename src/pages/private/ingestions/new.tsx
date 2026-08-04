@@ -18,6 +18,7 @@ import {
 import {
   type TBackendDocumentMutationResponse,
   type TBackendFinalizeRequest,
+  type TBackendLocalChatModelsResponse,
   type TBackendPrepareUploadRequest,
   type TBackendPrepareUploadResponse,
   isLiveInPipeline,
@@ -38,6 +39,7 @@ import {
 } from "@/core/batches";
 import { DatasetPicker } from "./new-ingestion/dataset-picker";
 import { EmbeddingSettingsPanel } from "./new-ingestion/embedding-settings-panel";
+import { formatModeEstimate } from "./new-ingestion/estimates";
 import { Field } from "./new-ingestion/field";
 import { FilePicker } from "./new-ingestion/file-picker";
 import {
@@ -45,12 +47,15 @@ import {
   GuidedBatchDialog,
 } from "./new-ingestion/guided-batch-dialog";
 import { ModeCard } from "./new-ingestion/mode-card";
+import { PipelinePreview } from "./new-ingestion/pipeline-preview";
 import { ResultSummary } from "./new-ingestion/result-summary";
 import { RunSummary } from "./new-ingestion/run-summary";
 import { StartIngestionButton } from "./new-ingestion/start-ingestion-button";
 import type {
   EmbeddingProvider,
   IngestionMode,
+  SummaryModel,
+  SummaryProvider,
   UploadItem,
 } from "./new-ingestion/types";
 import {
@@ -70,6 +75,13 @@ export default function NewIngestionPage() {
   const [mode, setMode] = useState<IngestionMode>("auto");
   const [embeddingProvider, setEmbeddingProvider] =
     useState<EmbeddingProvider>("openai");
+  const [summaryModel, setSummaryModel] = useState<SummaryModel>(
+    "qwen3-vl:30b-a3b-instruct-q8_0",
+  );
+  const [summaryProvider, setSummaryProvider] =
+    useState<SummaryProvider>("ollama");
+  const [localChatModels, setLocalChatModels] =
+    useState<TBackendLocalChatModelsResponse | null>(null);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [datasetsError, setDatasetsError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -121,6 +133,23 @@ export default function NewIngestionPage() {
     };
 
     void loadDatasets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    backendApi
+      .get<TBackendLocalChatModelsResponse>("/documents/ai/chat-models")
+      .then((response) => {
+        if (!cancelled) setLocalChatModels(response);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalChatModels(null);
+      });
 
     return () => {
       cancelled = true;
@@ -261,6 +290,8 @@ export default function NewIngestionPage() {
         sha256,
         mode,
         embedding_provider: embeddingProvider,
+        summary_provider: summaryProvider,
+        summary_model: summaryModel,
       });
 
       const isDuplicate =
@@ -584,6 +615,7 @@ export default function NewIngestionPage() {
                 label="Dataset"
                 hint="Where these documents will be stored and searched."
                 done={Boolean(selectedDataset)}
+                connected
               >
                 <DatasetPicker
                   datasets={datasets}
@@ -600,6 +632,7 @@ export default function NewIngestionPage() {
                 label="Files"
                 hint="Drop individual files or a whole folder."
                 done={items.length > 0}
+                connected
               >
                 <FilePicker
                   items={items}
@@ -623,41 +656,37 @@ export default function NewIngestionPage() {
                 hint="How much of the pipeline you want to approve yourself."
                 done={items.length > 0 && Boolean(selectedDataset)}
               >
-                <div
-                  role="radiogroup"
-                  aria-label="Ingestion mode"
-                  onKeyDown={handleModeKeyDown}
-                  className="grid gap-3 sm:grid-cols-2"
-                >
-                  <ModeCard
-                    mode="auto"
-                    selected={mode === "auto"}
-                    onSelect={() => setMode("auto")}
-                    icon={Zap}
-                    tag="Recommended"
-                    title="Auto"
-                    description="Runs end to end without stopping — extract, chunk, summarize, index and publish."
-                    time={
-                      items.length > 1
-                        ? `~2 min per document · ${items.length} documents`
-                        : "~2 min"
-                    }
-                    disabled={isSubmitting}
-                  />
-                  <ModeCard
-                    mode="guided"
-                    selected={mode === "guided"}
-                    onSelect={() => setMode("guided")}
-                    icon={ClipboardList}
-                    title="Guided"
-                    description="You approve every stage — extract, chunk, summarize, knowledge graph, embed and publish."
-                    time={
-                      items.length > 1
-                        ? `~5–10 min per document · ${items.length} documents`
-                        : "~5–10 min"
-                    }
-                    disabled={isSubmitting}
-                  />
+                <div className="space-y-3">
+                  <div
+                    role="radiogroup"
+                    aria-label="Ingestion mode"
+                    onKeyDown={handleModeKeyDown}
+                    className="grid gap-3 sm:grid-cols-2"
+                  >
+                    <ModeCard
+                      mode="auto"
+                      selected={mode === "auto"}
+                      onSelect={() => setMode("auto")}
+                      icon={Zap}
+                      tag="Recommended"
+                      title="Auto"
+                      description="Runs the whole pipeline start to finish without stopping."
+                      time={formatModeEstimate("auto", items.length)}
+                      disabled={isSubmitting}
+                    />
+                    <ModeCard
+                      mode="guided"
+                      selected={mode === "guided"}
+                      onSelect={() => setMode("guided")}
+                      icon={ClipboardList}
+                      title="Guided"
+                      description="Pauses between stages and waits for you to approve each one."
+                      time={formatModeEstimate("guided", items.length)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <PipelinePreview mode={mode} />
                 </div>
               </Field>
 
@@ -682,58 +711,92 @@ export default function NewIngestionPage() {
           </div>
 
           <aside className="min-w-0 border-t border-gray-200 bg-gray-50/60 px-5 py-6 sm:px-6 lg:border-l lg:border-t-0">
-            <EmbeddingSettingsPanel
-              value={embeddingProvider}
-              onChange={setEmbeddingProvider}
-              disabled={isSubmitting}
-            />
+            {/* Follows the form down the page — the settings and the summary
+                stay answerable wherever the user is in the flow. */}
+            <div className="space-y-4 lg:sticky lg:top-20">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Settings</h2>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Applies to every file in this upload.
+                </p>
+              </div>
+
+              <EmbeddingSettingsPanel
+                value={embeddingProvider}
+                onChange={setEmbeddingProvider}
+                summaryModel={summaryModel}
+                onSummaryModelChange={setSummaryModel}
+                summaryProvider={summaryProvider}
+                onSummaryProviderChange={(provider) => {
+                  setSummaryProvider(provider);
+                  setSummaryModel(
+                    provider === "openai"
+                      ? "gpt-4.1-mini"
+                      : "qwen3-vl:30b-a3b-instruct-q8_0",
+                  );
+                }}
+                localChatModels={localChatModels}
+                disabled={isSubmitting}
+              />
+
+              <RunSummary
+                datasetName={selectedDatasetName}
+                fileCount={items.length}
+                totalSize={totalSize}
+                mode={mode}
+                embeddingProvider={embeddingProvider}
+                summaryProvider={summaryProvider}
+                summaryModel={summaryModel}
+              />
+            </div>
           </aside>
         </div>
 
         {/* Sticks to the viewport so Start stays reachable however long the
-            file list grows. */}
-        <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-gray-200 bg-white/95 px-5 py-3.5 backdrop-blur sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              disabled={isSubmitting}
-              className="h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Cancel
-            </button>
+            file list grows. The inner grid mirrors the content grid so the
+            actions line up under the form rather than stranding Cancel and
+            Start at opposite edges of a full-bleed page. */}
+        <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white/95 backdrop-blur">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
+            <div className="px-5 py-3.5 sm:px-8">
+              <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    disabled={isSubmitting}
+                    className="h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
 
-            {finished && items.length > 0 && !isSubmitting && (
-              <button
-                type="button"
-                onClick={() => navigate("/documents")}
-                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
-              >
-                View documents
-                <ArrowRight className="size-4" />
-              </button>
-            )}
-          </div>
+                  {finished && items.length > 0 && !isSubmitting && (
+                    <button
+                      type="button"
+                      onClick={() => navigate("/documents")}
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                    >
+                      View documents
+                      <ArrowRight className="size-4" />
+                    </button>
+                  )}
+                </div>
 
-          <div className="w-full space-y-2 lg:w-115">
-            <RunSummary
-              datasetName={selectedDatasetName}
-              fileCount={items.length}
-              totalSize={totalSize}
-              provider={embeddingProvider}
-              mode={mode}
-            />
-            <StartIngestionButton
-              canStart={canStart}
-              isSubmitting={isSubmitting}
-              completedCount={completedCount}
-              itemCount={items.length}
-              mode={mode}
-              hint={hint}
-              uploadedRatio={uploadedRatio}
-              onStart={requestStart}
-              onCancel={cancelUploads}
-            />
+                <StartIngestionButton
+                  canStart={canStart}
+                  isSubmitting={isSubmitting}
+                  completedCount={completedCount}
+                  itemCount={items.length}
+                  mode={mode}
+                  hint={hint}
+                  uploadedRatio={uploadedRatio}
+                  onStart={requestStart}
+                  onCancel={cancelUploads}
+                />
+              </div>
+            </div>
+
+            <div className="hidden lg:block" />
           </div>
         </div>
       </main>

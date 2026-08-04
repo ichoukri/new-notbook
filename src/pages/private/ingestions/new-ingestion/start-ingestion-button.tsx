@@ -28,7 +28,7 @@ export function StartIngestionButton({
   const ModeIcon = mode === "guided" ? ClipboardList : Zap;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex gap-2">
         <button
           type="button"
@@ -36,7 +36,9 @@ export function StartIngestionButton({
           disabled={!canStart}
           aria-busy={isSubmitting}
           className={cn(
-            "relative h-11 flex-1 overflow-hidden rounded-xl text-sm font-semibold",
+            // Sized to its label: a fixed-width button leaves a wide empty slab
+            // when the label is short, which reads as a broken layout.
+            "relative h-11 flex-1 overflow-hidden rounded-xl px-5 text-sm font-semibold sm:flex-none",
             "flex items-center justify-center gap-2 transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
             canStart

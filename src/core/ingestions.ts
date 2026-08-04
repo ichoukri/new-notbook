@@ -4,6 +4,12 @@ import type { TPdfRegion } from "@/core/retrieval";
 
 export type TDocumentMode = "auto" | "guided";
 export type TEmbeddingProvider = "openai" | "qwen";
+export type TSummaryProvider = "ollama" | "openai";
+export type TSummaryModel =
+  | "gpt-4.1-mini"
+  | "qwen3-vl:30b-a3b-instruct-q8_0"
+  | "qwen3.6:35b-a3b-mtp-q4_K_M"
+  | "qwen3.6:35b-a3b-mtp-q8_0";
 
 export type TBackendDocument = {
   id: string;
@@ -24,6 +30,8 @@ export type TBackendDocument = {
   mode?: TDocumentMode;
   embedding_provider?: TEmbeddingProvider;
   embedding_profile?: string | null;
+  summary_provider?: TSummaryProvider | null;
+  summary_model?: TSummaryModel | null;
   processing_details?: Record<string, unknown> | null;
   doc_metadata?: Record<string, unknown> | null;
   access_policy?: Record<string, unknown> | null;
@@ -84,6 +92,25 @@ export type TBackendFinalizeRequest = {
   content_type: string | null;
   mode?: TDocumentMode;
   embedding_provider?: TEmbeddingProvider;
+  summary_provider?: TSummaryProvider;
+  summary_model?: TSummaryModel;
+};
+
+export type TBackendLocalChatModelsResponse = {
+  provider: "ollama";
+  online: boolean;
+  base_url: string;
+  default_model: Exclude<TSummaryModel, "gpt-4.1-mini">;
+  openai_configured: boolean;
+  openai_summary_model: "gpt-4.1-mini";
+  models: Array<{
+    provider: "ollama";
+    model: Exclude<TSummaryModel, "gpt-4.1-mini">;
+    label: string;
+    size_gb: number;
+    vision: boolean;
+    installed: boolean;
+  }>;
 };
 
 export type TBackendChunk = {

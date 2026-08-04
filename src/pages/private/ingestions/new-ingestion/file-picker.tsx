@@ -577,7 +577,7 @@ function FolderRow({
 
   return (
     <div
-      className="flex items-center gap-2 py-2.5 pr-3"
+      className="flex items-center gap-2 py-2.5 pr-3 transition-colors hover:bg-gray-50"
       style={{ paddingLeft: indentFor(depth) }}
     >
       <button
@@ -687,7 +687,7 @@ function FileRow({
 
   return (
     <div
-      className="flex items-center gap-3 py-2.5 pr-3"
+      className="flex items-center gap-3 py-2.5 pr-3 transition-colors hover:bg-gray-50"
       style={{ paddingLeft: indentFor(depth) }}
     >
       <div

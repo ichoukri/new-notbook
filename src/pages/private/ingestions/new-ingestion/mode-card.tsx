@@ -73,7 +73,10 @@ export function ModeCard({
         </span>
       </div>
 
-      <p className="mt-3 text-xs leading-relaxed text-gray-600">{description}</p>
+      {/* Grows so both cards' footers line up whatever the copy length. */}
+      <p className="mt-3 flex-1 text-xs leading-relaxed text-gray-600">
+        {description}
+      </p>
 
       <p
         className={cn(
