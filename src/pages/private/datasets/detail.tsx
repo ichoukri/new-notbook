@@ -36,6 +36,7 @@ import {
 import { DatasetDocumentsPanel } from "./detail-components/dataset-documents-panel";
 import { DatasetMetadataPanel } from "./detail-components/dataset-metadata-panel";
 import { DatasetPipelinePanel } from "./detail-components/dataset-pipeline-panel";
+import { persistDatasetUpdate } from "./detail-components/dataset-update-client";
 import { EditDatasetDialog } from "./detail-components/edit-dataset-dialog";
 
 /** How often to re-poll while documents are still moving through ingestion. */
@@ -193,10 +194,11 @@ export default function DatasetDetailPage() {
   const handleSave = async (payload: UpdateDatasetPayload) => {
     if (!id) return;
 
-    const updated = await backendApi.replace<
-      TBackendDataset,
-      UpdateDatasetPayload
-    >("/datasets", id, payload);
+    const updated = await persistDatasetUpdate(
+      backendApi,
+      id,
+      payload,
+    );
 
     // The update endpoint returns the dataset without its documents, so keep
     // the documents already loaded rather than blanking the table.

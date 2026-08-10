@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Database, Loader2, Plus, Tag, X } from "lucide-react";
+import { Bot, Database, Loader2, Plus, Tag, Wrench, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getApiErrorMessage } from "@/core/api/error";
 import type { CreateDatasetPayload } from "./dataset-page-types";
+import {
+  buildCreateDatasetMetadata,
+  DatasetMetadataValidationError,
+  EMPTY_DATASET_METADATA_FIELD,
+  type DatasetAgentProfile,
+  type DatasetMetadataField,
+} from "./dataset-agent-profile";
+import { cn } from "@/lib/utils";
 
 export function CreateDatasetModal({
   open,
@@ -25,8 +33,10 @@ export function CreateDatasetModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
-  const [metaFields, setMetaFields] = useState<{ key: string; value: string }[]>([
-    { key: "", value: "" },
+  const [agentProfile, setAgentProfile] =
+    useState<DatasetAgentProfile>("generic");
+  const [metaFields, setMetaFields] = useState<DatasetMetadataField[]>([
+    { ...EMPTY_DATASET_METADATA_FIELD },
   ]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,7 +45,8 @@ export function CreateDatasetModal({
     setName("");
     setDescription("");
     setTags("");
-    setMetaFields([{ key: "", value: "" }]);
+    setAgentProfile("generic");
+    setMetaFields([{ ...EMPTY_DATASET_METADATA_FIELD }]);
     setError("");
     setIsSubmitting(false);
   };
@@ -50,7 +61,10 @@ export function CreateDatasetModal({
   };
 
   const addField = () => {
-    setMetaFields((fields) => [...fields, { key: "", value: "" }]);
+    setMetaFields((fields) => [
+      ...fields,
+      { ...EMPTY_DATASET_METADATA_FIELD },
+    ]);
   };
 
   const removeField = (index: number) => {
@@ -84,19 +98,17 @@ export function CreateDatasetModal({
       .map((tag) => tag.trim())
       .filter(Boolean);
 
-    const metadataEntries = metaFields
-      .map((field) => ({
-        key: field.key.trim(),
-        value: field.value.trim(),
-      }))
-      .filter((field) => field.key);
-
-    const datasetMetadata =
-      metadataEntries.length > 0
-        ? Object.fromEntries(
-            metadataEntries.map((field) => [field.key, field.value]),
-          )
-        : undefined;
+    let datasetMetadata: Record<string, unknown>;
+    try {
+      datasetMetadata = buildCreateDatasetMetadata(metaFields, agentProfile);
+    } catch (metadataError) {
+      setError(
+        metadataError instanceof DatasetMetadataValidationError
+          ? metadataError.message
+          : "Dataset metadata is invalid.",
+      );
+      return;
+    }
 
     setIsSubmitting(true);
     setError("");
@@ -153,6 +165,60 @@ export function CreateDatasetModal({
               placeholder="e.g. Product Documentation v3"
               className="rounded-xl h-10"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Chat agent profile
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                {
+                  value: "generic",
+                  label: "Generic",
+                  hint: "Evidence-only answers",
+                  icon: Bot,
+                },
+                {
+                  value: "maintenance",
+                  label: "Maintenance",
+                  hint: "Tizert TAG and safety routing",
+                  icon: Wrench,
+                },
+              ] as const).map((option) => {
+                const Icon = option.icon;
+                const selected = agentProfile === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setAgentProfile(option.value)}
+                    aria-pressed={selected}
+                    className={cn(
+                      "flex items-start gap-2 rounded-xl border p-3 text-left transition-all",
+                      selected
+                        ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100"
+                        : "border-gray-200 hover:bg-gray-50",
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        "mt-0.5 size-4 shrink-0",
+                        selected ? "text-indigo-600" : "text-gray-400",
+                      )}
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-gray-700">
+                        {option.label}
+                      </span>
+                      <span className="block text-[11px] leading-4 text-gray-400">
+                        {option.hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="space-y-1.5">

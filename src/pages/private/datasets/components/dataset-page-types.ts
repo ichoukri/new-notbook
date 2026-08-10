@@ -7,7 +7,7 @@ export type CreateDatasetPayload = {
   name: string;
   description?: string;
   tags?: string[];
-  dataset_metadata?: Record<string, string>;
+  dataset_metadata?: Record<string, unknown>;
 };
 
 export const STATUS_CONFIG = {

@@ -1,5 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Archive, CheckCircle2, Loader2, Pencil, Plus, Tag, X } from "lucide-react";
+import {
+  Archive,
+  Bot,
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  Plus,
+  Tag,
+  Wrench,
+  X,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,8 +24,15 @@ import { getApiErrorMessage } from "@/core/api/error";
 import type { TDataset } from "@/core/datasets";
 import { cn } from "@/lib/utils";
 import type { UpdateDatasetPayload } from "./dataset-detail-types";
-
-type MetadataField = { key: string; value: string };
+import {
+  buildDatasetMetadataUpdate,
+  DatasetMetadataValidationError,
+  EMPTY_DATASET_METADATA_FIELD,
+  getDatasetAgentProfile,
+  type DatasetAgentProfile,
+  type DatasetMetadataField,
+  toDatasetMetadataFields,
+} from "../components/dataset-agent-profile";
 
 const STATUS_OPTIONS = [
   {
@@ -31,20 +48,6 @@ const STATUS_OPTIONS = [
     hint: "Kept for reference only",
   },
 ] as const;
-
-function toMetadataFields(
-  metadata: Record<string, unknown> | null,
-): MetadataField[] {
-  const entries = Object.entries(metadata ?? {});
-  if (entries.length === 0) {
-    return [{ key: "", value: "" }];
-  }
-
-  return entries.map(([key, value]) => ({
-    key,
-    value: typeof value === "string" ? value : JSON.stringify(value),
-  }));
-}
 
 export function EditDatasetDialog({
   dataset,
@@ -97,7 +100,7 @@ export function EditDatasetDialog({
   );
 }
 
-function EditDatasetForm({
+export function EditDatasetForm({
   dataset,
   onCancel,
   onSave,
@@ -110,12 +113,23 @@ function EditDatasetForm({
   onSaved: () => void;
   onSubmittingChange: (isSubmitting: boolean) => void;
 }) {
+  // Background ingestion polling can refresh the parent while this form is
+  // open. Keep the metadata baseline and concurrency token from the moment the
+  // editor opened; adopting newer props here would let stale form values bypass
+  // Fusion's optimistic 409 check.
+  const [editBase] = useState(() => ({
+    metadata: dataset.metadata,
+    updatedAt: dataset.updatedAt,
+  }));
   const [name, setName] = useState(dataset.name);
   const [description, setDescription] = useState(dataset.description);
   const [tags, setTags] = useState(dataset.tags.join(", "));
   const [status, setStatus] = useState<TDataset["status"]>(dataset.status);
-  const [metaFields, setMetaFields] = useState<MetadataField[]>(() =>
-    toMetadataFields(dataset.metadata),
+  const [agentProfile, setAgentProfile] = useState<DatasetAgentProfile>(() =>
+    getDatasetAgentProfile(dataset.metadata),
+  );
+  const [metaFields, setMetaFields] = useState<DatasetMetadataField[]>(() =>
+    toDatasetMetadataFields(dataset.metadata),
   );
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -150,25 +164,37 @@ function EditDatasetForm({
       .map((tag) => tag.trim())
       .filter(Boolean);
 
-    const metadataEntries = metaFields
-      .map((field) => ({ key: field.key.trim(), value: field.value.trim() }))
-      .filter((field) => field.key);
+    let datasetMetadata: Record<string, unknown> | undefined;
+    try {
+      datasetMetadata = buildDatasetMetadataUpdate(
+        metaFields,
+        editBase.metadata,
+      );
+    } catch (metadataError) {
+      setError(
+        metadataError instanceof DatasetMetadataValidationError
+          ? metadataError.message
+          : "Dataset metadata is invalid.",
+      );
+      return;
+    }
 
     setSubmitting(true);
     setError("");
 
     try {
       await onSave({
+        expected_updated_at: editBase.updatedAt,
         name: name.trim(),
         description: description.trim() || null,
         status,
         tags: parsedTags.length > 0 ? parsedTags : null,
-        dataset_metadata:
-          metadataEntries.length > 0
-            ? Object.fromEntries(
-                metadataEntries.map((field) => [field.key, field.value]),
-              )
-            : null,
+        agent_profile: agentProfile,
+        ...(datasetMetadata
+          ? {
+              custom_metadata: datasetMetadata,
+            }
+          : {}),
       });
       setSubmitting(false);
       onSaved();
@@ -190,6 +216,60 @@ function EditDatasetForm({
           placeholder="e.g. Product Documentation v3"
           className="h-10 rounded-xl"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Chat agent profile
+        </Label>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            {
+              value: "generic",
+              label: "Generic",
+              hint: "Evidence-only answers",
+              icon: Bot,
+            },
+            {
+              value: "maintenance",
+              label: "Maintenance",
+              hint: "Tizert TAG and safety routing",
+              icon: Wrench,
+            },
+          ] as const).map((option) => {
+            const OptionIcon = option.icon;
+            const isSelected = agentProfile === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setAgentProfile(option.value)}
+                aria-pressed={isSelected}
+                className={cn(
+                  "flex items-start gap-2 rounded-xl border p-3 text-left transition-all",
+                  isSelected
+                    ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100"
+                    : "border-gray-200 hover:bg-gray-50",
+                )}
+              >
+                <OptionIcon
+                  className={cn(
+                    "mt-0.5 size-4 shrink-0",
+                    isSelected ? "text-indigo-600" : "text-gray-400",
+                  )}
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-700">
+                    {option.label}
+                  </span>
+                  <span className="block text-[11px] leading-4 text-gray-400">
+                    {option.hint}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -330,7 +410,10 @@ function EditDatasetForm({
           <button
             type="button"
             onClick={() =>
-              setMetaFields((fields) => [...fields, { key: "", value: "" }])
+              setMetaFields((fields) => [
+                ...fields,
+                { ...EMPTY_DATASET_METADATA_FIELD },
+              ])
             }
             className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700"
           >

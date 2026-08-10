@@ -5,6 +5,7 @@ import {
   Loader2,
   ShieldQuestion,
 } from "lucide-react";
+import type { DatasetAgentProfile } from "../components/dataset-agent-profile";
 
 /**
  * Ingestion statuses are fine-grained (partitioning, chunking, vectorization…).
@@ -95,9 +96,11 @@ export const DOCUMENT_GROUP_CONFIG = {
 >;
 
 export type UpdateDatasetPayload = {
+  expected_updated_at: string;
   name: string;
-  description?: string | null;
+  description: string | null;
   status: "active" | "archived";
-  tags?: string[] | null;
-  dataset_metadata?: Record<string, unknown> | null;
+  tags: string[] | null;
+  agent_profile: DatasetAgentProfile;
+  custom_metadata?: Record<string, unknown>;
 };
