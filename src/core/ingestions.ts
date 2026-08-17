@@ -82,14 +82,10 @@ export type TBackendPrepareUploadResponse = {
   expires_in: number;
 };
 
+// The file description is read back from the upload intent recorded at
+// prepare-upload, so finalize carries only the id and the processing profile.
 export type TBackendFinalizeRequest = {
   document_id: string;
-  object_key: string;
-  filename: string;
-  source_relative_path: string | null;
-  file_size: number;
-  sha256: string;
-  content_type: string | null;
   mode?: TDocumentMode;
   embedding_provider?: TEmbeddingProvider;
   summary_provider?: TSummaryProvider;

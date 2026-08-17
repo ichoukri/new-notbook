@@ -236,7 +236,7 @@ export default function NewIngestionPage() {
     setFinished(false);
   };
 
-  // Upload one file end-to-end (presign → PUT → hash → finalize) and return the
+  // Upload one file end-to-end (presign → PUT → finalize) and return the
   // resolved item with its outcome. Never throws — failures are captured on the
   // item so one bad file doesn't abort the batch.
   const uploadOne = async (
@@ -274,20 +274,11 @@ export default function NewIngestionPage() {
         },
       });
 
-      const fileBuffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest("SHA-256", fileBuffer);
-      const sha256 = Array.from(new Uint8Array(hashBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-
       const finalizeResponse = await backendApi.create<
         TBackendDocumentMutationResponse,
         TBackendFinalizeRequest
       >(`/documents/${selectedDataset}/finalize`, {
         document_id: prepareResponse.document_id,
-        object_key: prepareResponse.object_key,
-        ...uploadMetadata,
-        sha256,
         mode,
         embedding_provider: embeddingProvider,
         summary_provider: summaryProvider,
