@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Bot, Database, Loader2, Plus, Tag, Wrench, X } from "lucide-react";
+import { Bot, Database, Loader2, Tag, Wrench } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,7 @@ import {
   type DatasetAgentProfile,
   type DatasetMetadataField,
 } from "./dataset-agent-profile";
+import { DatasetMetadataFieldsEditor } from "./dataset-metadata-fields-editor";
 import { cn } from "@/lib/utils";
 
 export function CreateDatasetModal({
@@ -58,31 +59,6 @@ export function CreateDatasetModal({
 
     resetForm();
     onClose();
-  };
-
-  const addField = () => {
-    setMetaFields((fields) => [
-      ...fields,
-      { ...EMPTY_DATASET_METADATA_FIELD },
-    ]);
-  };
-
-  const removeField = (index: number) => {
-    setMetaFields((fields) =>
-      fields.filter((_, currentIndex) => currentIndex !== index),
-    );
-  };
-
-  const updateField = (
-    index: number,
-    column: "key" | "value",
-    value: string,
-  ) => {
-    setMetaFields((fields) =>
-      fields.map((field, currentIndex) =>
-        currentIndex === index ? { ...field, [column]: value } : field,
-      ),
-    );
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -254,68 +230,10 @@ export function CreateDatasetModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Metadata
-              </Label>
-              <span className="text-[11px] text-gray-400">
-                Optional key-value pairs
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <div className="grid grid-cols-[1fr_1fr_20px] gap-2 px-0.5">
-                <span className="text-[11px] font-medium text-gray-400 pl-1">
-                  Key
-                </span>
-                <span className="text-[11px] font-medium text-gray-400 pl-1">
-                  Value
-                </span>
-              </div>
-
-              {metaFields.map((row, index) => (
-                <div
-                  key={`${row.key}-${index}`}
-                  className="grid grid-cols-[1fr_1fr_28px] gap-2 items-center"
-                >
-                  <Input
-                    value={row.key}
-                    onChange={(event) =>
-                      updateField(index, "key", event.target.value)
-                    }
-                    placeholder="e.g. owner"
-                    className="rounded-lg h-9 text-sm"
-                  />
-                  <Input
-                    value={row.value}
-                    onChange={(event) =>
-                      updateField(index, "value", event.target.value)
-                    }
-                    placeholder="e.g. research-team"
-                    className="rounded-lg h-9 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeField(index)}
-                    disabled={metaFields.length === 1}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addField}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors mt-1"
-              >
-                <Plus className="size-3.5" />
-                Add field
-              </button>
-            </div>
-          </div>
+          <DatasetMetadataFieldsEditor
+            fields={metaFields}
+            onChange={setMetaFields}
+          />
 
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

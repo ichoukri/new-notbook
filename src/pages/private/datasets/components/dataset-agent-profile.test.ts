@@ -7,6 +7,7 @@ import {
   getDatasetAgentProfile,
   hasDatasetCustomMetadataChanges,
   toDatasetMetadataFields,
+  toggleDatasetMetadataFieldValueKind,
   withDatasetAgentProfile,
 } from "./dataset-agent-profile";
 
@@ -141,6 +142,70 @@ describe("dataset agent profile metadata", () => {
     expect(() => buildDatasetCustomMetadata(wrongKind)).toThrow(
       'must remain object',
     );
+  });
+
+  it("lets a brand-new field hold a nested object value", () => {
+    expect(
+      buildCreateDatasetMetadata(
+        [
+          {
+            key: "scientific_research",
+            value: '{"state_values":[],"existing_keys":["arxiv:1"]}',
+            valueKind: "object",
+          },
+        ],
+        "generic",
+      ),
+    ).toEqual({
+      scientific_research: { state_values: [], existing_keys: ["arxiv:1"] },
+      agent_profile: "generic",
+    });
+  });
+
+  it("lets a brand-new JSON field hold any JSON shape, not just objects", () => {
+    expect(
+      buildDatasetCustomMetadata([
+        { key: "tags_extra", value: "[1,2,3]", valueKind: "object" },
+      ]),
+    ).toEqual({ tags_extra: [1, 2, 3] });
+
+    expect(
+      buildDatasetCustomMetadata([
+        { key: "threshold", value: "42", valueKind: "object" },
+      ]),
+    ).toEqual({ threshold: 42 });
+  });
+
+  it("still guards an existing structured value against becoming a different shape", () => {
+    const fields = toDatasetMetadataFields({
+      scientific_research: { existing_keys: ["arxiv:1"] },
+    });
+    fields[0].value = "[1,2,3]";
+
+    expect(() => buildDatasetCustomMetadata(fields)).toThrow(
+      "must remain object",
+    );
+  });
+
+  it("toggles a new field between text and JSON input modes", () => {
+    const textField = {
+      key: "owner",
+      value: "ops",
+      valueKind: "string" as const,
+    };
+    const jsonField = toggleDatasetMetadataFieldValueKind(textField);
+    expect(jsonField.valueKind).toBe("object");
+    expect(jsonField.value).toBe("ops");
+
+    const emptyJsonField = toggleDatasetMetadataFieldValueKind({
+      key: "owner",
+      value: "",
+      valueKind: "string",
+    });
+    expect(emptyJsonField.value).toBe("{}");
+
+    const backToText = toggleDatasetMetadataFieldValueKind(jsonField);
+    expect(backToText.valueKind).toBe("string");
   });
 
   it("rejects duplicate custom metadata keys", () => {

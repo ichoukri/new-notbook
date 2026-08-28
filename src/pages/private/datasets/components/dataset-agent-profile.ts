@@ -13,14 +13,17 @@ export type DatasetMetadataValueKind =
 export type DatasetMetadataField = {
   key: string;
   value: string;
-  /**
-   * Existing non-string values are edited as JSON. Keeping their original kind
-   * lets us reject invalid edits instead of silently turning structured
-   * platform metadata (for example `versions`) into a string.
-   */
+  /** Current input mode: "string" renders a plain text box, anything else a JSON textarea. */
   valueKind: DatasetMetadataValueKind;
   originalValue?: unknown;
   originalText?: string;
+  /**
+   * Kind the value had when loaded from the backend. Only set for values that
+   * already existed as structured JSON, so we can reject an edit that would
+   * silently turn that shape into something else. A brand-new field (added in
+   * the UI) has no original kind to protect, so it may hold any JSON value.
+   */
+  originalValueKind?: DatasetMetadataValueKind;
 };
 
 export const EMPTY_DATASET_METADATA_FIELD: DatasetMetadataField = {
@@ -75,6 +78,7 @@ export function toDatasetMetadataFields(
         valueKind,
         originalValue,
         originalText,
+        originalValueKind: valueKind,
       } satisfies DatasetMetadataField;
     });
 
@@ -98,14 +102,16 @@ function parseExistingMetadataValue(field: DatasetMetadataField): unknown {
     parsed = JSON.parse(field.value);
   } catch {
     throw new DatasetMetadataValidationError(
-      `Metadata value for "${field.key.trim() || "unnamed field"}" must be valid JSON (${field.valueKind}).`,
+      `Metadata value for "${field.key.trim() || "unnamed field"}" must be valid JSON.`,
     );
   }
 
-  const parsedKind = metadataValueKind(parsed);
-  if (parsedKind !== field.valueKind) {
+  if (
+    field.originalValueKind &&
+    metadataValueKind(parsed) !== field.originalValueKind
+  ) {
     throw new DatasetMetadataValidationError(
-      `Metadata value for "${field.key.trim() || "unnamed field"}" must remain ${field.valueKind}.`,
+      `Metadata value for "${field.key.trim() || "unnamed field"}" must remain ${field.originalValueKind}.`,
     );
   }
   return parsed;
@@ -197,12 +203,21 @@ export function buildDatasetMetadataUpdate(
   return customMetadata;
 }
 
-/** New free-form metadata fields retain their established string semantics. */
 export function buildCreateDatasetMetadata(
   fields: DatasetMetadataField[],
   profile: DatasetAgentProfile,
 ): Record<string, unknown> {
   return buildDatasetMetadata(fields, profile);
+}
+
+/** Flip a field between a plain-text value and a JSON (object/array/etc.) value. */
+export function toggleDatasetMetadataFieldValueKind(
+  field: DatasetMetadataField,
+): DatasetMetadataField {
+  if (field.valueKind !== "string") {
+    return { ...field, valueKind: "string", value: field.value };
+  }
+  return { ...field, valueKind: "object", value: field.value || "{}" };
 }
 
 export function getDatasetAgentProfile(

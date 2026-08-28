@@ -5,10 +5,8 @@ import {
   CheckCircle2,
   Loader2,
   Pencil,
-  Plus,
   Tag,
   Wrench,
-  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,12 +25,12 @@ import type { UpdateDatasetPayload } from "./dataset-detail-types";
 import {
   buildDatasetMetadataUpdate,
   DatasetMetadataValidationError,
-  EMPTY_DATASET_METADATA_FIELD,
   getDatasetAgentProfile,
   type DatasetAgentProfile,
   type DatasetMetadataField,
   toDatasetMetadataFields,
 } from "../components/dataset-agent-profile";
+import { DatasetMetadataFieldsEditor } from "../components/dataset-metadata-fields-editor";
 
 const STATUS_OPTIONS = [
   {
@@ -137,18 +135,6 @@ export function EditDatasetForm({
   const setSubmitting = (value: boolean) => {
     setIsSubmitting(value);
     onSubmittingChange(value);
-  };
-
-  const updateField = (
-    index: number,
-    column: "key" | "value",
-    value: string,
-  ) => {
-    setMetaFields((fields) =>
-      fields.map((field, currentIndex) =>
-        currentIndex === index ? { ...field, [column]: value } : field,
-      ),
-    );
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -350,78 +336,7 @@ export function EditDatasetForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Metadata
-          </Label>
-          <span className="text-[11px] text-gray-400">
-            Optional key-value pairs
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_1fr_20px] gap-2 px-0.5">
-            <span className="pl-1 text-[11px] font-medium text-gray-400">
-              Key
-            </span>
-            <span className="pl-1 text-[11px] font-medium text-gray-400">
-              Value
-            </span>
-          </div>
-
-          {metaFields.map((row, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-[1fr_1fr_28px] items-center gap-2"
-            >
-              <Input
-                value={row.key}
-                onChange={(event) =>
-                  updateField(index, "key", event.target.value)
-                }
-                placeholder="e.g. owner"
-                className="h-9 rounded-lg text-sm"
-              />
-              <Input
-                value={row.value}
-                onChange={(event) =>
-                  updateField(index, "value", event.target.value)
-                }
-                placeholder="e.g. research-team"
-                className="h-9 rounded-lg text-sm"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setMetaFields((fields) =>
-                    fields.filter((_, currentIndex) => currentIndex !== index),
-                  )
-                }
-                disabled={metaFields.length === 1}
-                aria-label="Remove metadata field"
-                className="flex size-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={() =>
-              setMetaFields((fields) => [
-                ...fields,
-                { ...EMPTY_DATASET_METADATA_FIELD },
-              ])
-            }
-            className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700"
-          >
-            <Plus className="size-3.5" />
-            Add field
-          </button>
-        </div>
-      </div>
+      <DatasetMetadataFieldsEditor fields={metaFields} onChange={setMetaFields} />
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
