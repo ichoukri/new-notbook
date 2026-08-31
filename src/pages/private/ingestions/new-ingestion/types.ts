@@ -2,13 +2,12 @@ import type { LucideIcon } from "lucide-react";
 
 export type IconComponent = LucideIcon;
 export type IngestionMode = "auto" | "guided";
-export type EmbeddingProvider = "openai" | "qwen";
-export type SummaryProvider = "ollama" | "openai";
-export type SummaryModel =
-  | "gpt-4.1-mini"
-  | "qwen3-vl:30b-a3b-instruct-q8_0"
-  | "qwen3.6:35b-a3b-mtp-q4_K_M"
-  | "qwen3.6:35b-a3b-mtp-q8_0";
+export type {
+  TEmbeddingProvider as EmbeddingProvider,
+  TSummaryProvider as SummaryProvider,
+  TSummaryModel as SummaryModel,
+  TOllamaSummaryModel as OllamaSummaryModel,
+} from "@/core/ingestions";
 export type UploadStatus =
   | "pending"
   | "uploading"

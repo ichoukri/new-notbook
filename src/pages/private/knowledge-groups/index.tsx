@@ -415,7 +415,7 @@ export default function KnowledgeGroupsPage() {
             "/knowledge-groups/tree",
           ),
           backendApi.findMany<TBackendDataset>("/datasets/", {
-            include_documents: "true",
+            include_documents: "false",
             limit: "100",
           }),
         ]);

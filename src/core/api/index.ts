@@ -147,6 +147,12 @@ class BackendApi {
     return response.data;
   }
 
+  /** PUT to a fixed resource path — no id is appended, unlike `replace`. */
+  async put<TResponse, TInput>(path: string, data: TInput): Promise<TResponse> {
+    const response = await this.api.put<TResponse>(path, data);
+    return response.data;
+  }
+
   async updateUser<T>(path: string, data: Partial<T>): Promise<T> {
     const response = await this.api.patch<T>(path, data);
     return response.data;

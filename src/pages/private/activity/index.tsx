@@ -4,7 +4,7 @@ import Topbar from "@/components/app/topbar";
 import { ModeBadge, StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useDatasets, useDocuments } from "@/core/api/hooks";
+import { useDatasets, useDocument, useDocuments } from "@/core/api/hooks";
 import {
   getDocumentDatasetName,
   getDocumentMode,
@@ -125,8 +125,16 @@ export default function ActivityPage() {
     });
   }, [datasetsById, documentResource.items, modeFilter, search, statusFilter]);
 
-  const selectedDocument =
+  const selectedListDocument =
     filteredDocuments.find((document) => document.id === selectedDocumentId) ?? null;
+  // The list response omits the ingestion trace, so the detail panel loads the
+  // selected document in full for its logs. `keepPreviousData` on the hook
+  // means the panel renders from the list row until that lands.
+  const selectedDetail = useDocument(selectedDocumentId);
+  const selectedDocument =
+    selectedDetail.document?.id === selectedDocumentId
+      ? selectedDetail.document
+      : selectedListDocument;
 
   const stats = {
     total: documentResource.total || documentResource.items.length,

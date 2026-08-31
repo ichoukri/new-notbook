@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import useSWR from "swr";
 import { backendApi, type TPaginatedResponse } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
@@ -58,8 +59,19 @@ function useBackendList<TBackend, TMapped>(
     },
   );
 
+  // Mapping on every render would hand every consumer a new array of new
+  // objects each time, defeating the useMemo/memo guards downstream — with a
+  // page of 100 documents that meant recomputing every derived value on every
+  // unrelated state change.
+  const items = useMemo(
+    () => (data?.items ?? []).map(mapper),
+    // `mapper` is a module-level function per hook, so it is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data],
+  );
+
   return {
-    items: (data?.items ?? []).map(mapper),
+    items,
     total: data?.total ?? DEFAULT_LIST_META.total,
     offset: data?.offset ?? DEFAULT_LIST_META.offset,
     limit: data?.limit ?? DEFAULT_LIST_META.limit,
@@ -88,6 +100,29 @@ export function useDocuments(params?: Params) {
     mapBackendDocument,
     "Could not load documents.",
   );
+}
+
+/**
+ * One document, with its complete `processing_details` (logs included).
+ *
+ * List endpoints omit the ingestion trace — it is the bulk of the payload and
+ * no list renders it — so detail views that need logs load the document here
+ * rather than inflating every list response.
+ */
+export function useDocument(documentId: string | null) {
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    documentId ? (["document", documentId] as const) : null,
+    ([, id]) => backendApi.get<TBackendDocument>(`/documents/${id}`),
+    { keepPreviousData: true, revalidateOnFocus: false },
+  );
+
+  return {
+    document: data ? mapBackendDocument(data) : null,
+    isLoading,
+    isValidating,
+    error: error ? getApiErrorMessage(error, "Could not load document.") : "",
+    refresh: mutate,
+  };
 }
 
 export function useDocumentChunks(documentId: string | null, params?: Params) {

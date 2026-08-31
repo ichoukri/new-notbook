@@ -2,6 +2,11 @@ import { ClipboardList, Zap } from "lucide-react";
 import { formatFileSize } from "@/core/datasets";
 import { cn } from "@/lib/utils";
 import { formatModeEstimateCompact } from "./estimates";
+import {
+  EMBEDDING_PROVIDER_CHROME,
+  SUMMARY_PROVIDER_CHROME,
+  summaryModelLabel,
+} from "./providers";
 import type {
   EmbeddingProvider,
   IngestionMode,
@@ -9,12 +14,6 @@ import type {
   SummaryProvider,
 } from "./types";
 
-const SUMMARY_LABELS: Record<SummaryModel, string> = {
-  "gpt-4.1-mini": "GPT-4.1 mini",
-  "qwen3-vl:30b-a3b-instruct-q8_0": "Qwen3 VL 30B",
-  "qwen3.6:35b-a3b-mtp-q4_K_M": "Qwen3.6 35B Q4",
-  "qwen3.6:35b-a3b-mtp-q8_0": "Qwen3.6 35B Q8",
-};
 
 function SummaryRow({
   label,
@@ -105,11 +104,11 @@ export function RunSummary({
         </SummaryRow>
         <SummaryRow
           label="Embedding"
-          value={embeddingProvider === "openai" ? "OpenAI" : "Qwen local"}
+          value={EMBEDDING_PROVIDER_CHROME[embeddingProvider].label}
         />
         <SummaryRow
           label="Summarization"
-          value={`${summaryProvider === "openai" ? "OpenAI" : "Local"} · ${SUMMARY_LABELS[summaryModel]}`}
+          value={`${SUMMARY_PROVIDER_CHROME[summaryProvider].label} · ${summaryModelLabel(summaryModel)}`}
         />
         <SummaryRow
           label="Estimated"

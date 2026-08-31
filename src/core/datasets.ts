@@ -33,6 +33,8 @@ export type TBackendDataset = {
   tags?: string[] | null;
   dataset_metadata?: Record<string, unknown> | null;
   documents?: TBackendDatasetDocument[];
+  /** Server-computed count, present whether or not documents are embedded. */
+  document_count?: number;
 };
 
 export type TDatasetDocument = {
@@ -105,7 +107,9 @@ export function mapBackendDataset(dataset: TBackendDataset): TDataset {
     tags: dataset.tags ?? [],
     metadata: dataset.dataset_metadata ?? null,
     documents,
-    documentCount: documents.length,
+    // The server counts the dataset's documents even when none are embedded,
+    // so a list view can show the count without fetching them.
+    documentCount: dataset.document_count ?? documents.length,
   };
 }
 

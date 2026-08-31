@@ -54,7 +54,7 @@ export default function DatasetsPage() {
         const response = await backendApi.findMany<TBackendDataset>(
           "/datasets/",
           {
-            include_documents: "true",
+            include_documents: "false",
             limit: "100",
           },
         );

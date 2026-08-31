@@ -140,7 +140,7 @@ export default function KnowledgeGraphExplorerPage() {
       try {
         const [datasetResponse, documentResponse] = await Promise.all([
           backendApi.findMany<TBackendDataset>("/datasets/", {
-            include_documents: "true",
+            include_documents: "false",
             limit: "100",
             sort_by: "updated_at",
             sort_order: "desc",

@@ -22,7 +22,7 @@ const DASHBOARD_DOCUMENT_PARAMS: Record<string, string> = {
 };
 
 const DASHBOARD_DATASET_PARAMS: Record<string, string> = {
-  include_documents: "true",
+  include_documents: "false",
   limit: "100",
   sort_by: "updated_at",
   sort_order: "desc",

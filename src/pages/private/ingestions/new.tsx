@@ -39,6 +39,7 @@ import {
 } from "@/core/batches";
 import { DatasetPicker } from "./new-ingestion/dataset-picker";
 import { EmbeddingSettingsPanel } from "./new-ingestion/embedding-settings-panel";
+import { defaultSummaryModel } from "./new-ingestion/providers";
 import { formatModeEstimate } from "./new-ingestion/estimates";
 import { Field } from "./new-ingestion/field";
 import { FilePicker } from "./new-ingestion/file-picker";
@@ -103,7 +104,7 @@ export default function NewIngestionPage() {
         const response = await backendApi.findMany<TBackendDataset>(
           "/datasets/",
           {
-            include_documents: "true",
+            include_documents: "false",
             limit: "100",
           },
         );
@@ -720,10 +721,10 @@ export default function NewIngestionPage() {
                 summaryProvider={summaryProvider}
                 onSummaryProviderChange={(provider) => {
                   setSummaryProvider(provider);
+                  // Models are provider-specific: carrying the previous pick
+                  // across would be rejected by the backend validator.
                   setSummaryModel(
-                    provider === "openai"
-                      ? "gpt-4.1-mini"
-                      : "qwen3-vl:30b-a3b-instruct-q8_0",
+                    defaultSummaryModel(provider, localChatModels),
                   );
                 }}
                 localChatModels={localChatModels}

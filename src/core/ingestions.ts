@@ -3,13 +3,22 @@ import { mapSourceRelativePaths } from "@/core/source-provenance";
 import type { TPdfRegion } from "@/core/retrieval";
 
 export type TDocumentMode = "auto" | "guided";
-export type TEmbeddingProvider = "openai" | "qwen";
-export type TSummaryProvider = "ollama" | "openai";
-export type TSummaryModel =
-  | "gpt-4.1-mini"
+/**
+ * Embedding provider ids as the backend stores them. The vLLM-served provider
+ * is stored as `qwen` — the id already written on every ingested document — so
+ * it keeps that id on the wire and is labelled "vLLM" in the UI.
+ */
+export type TEmbeddingProvider = "openai" | "ollama" | "qwen";
+export type TSummaryProvider = "ollama" | "openai" | "vllm";
+export type TOllamaSummaryModel =
   | "qwen3-vl:30b-a3b-instruct-q8_0"
   | "qwen3.6:35b-a3b-mtp-q4_K_M"
   | "qwen3.6:35b-a3b-mtp-q8_0";
+/**
+ * The vLLM endpoint serves whatever model it was launched with, so its name
+ * comes from the backend rather than a fixed union.
+ */
+export type TSummaryModel = "gpt-4.1-mini" | TOllamaSummaryModel | (string & {});
 
 export type TBackendDocument = {
   id: string;
@@ -92,21 +101,40 @@ export type TBackendFinalizeRequest = {
   summary_model?: TSummaryModel;
 };
 
+export type TBackendEmbeddingProviderOption = {
+  provider: TEmbeddingProvider;
+  label: string;
+  model: string;
+  dimensions: number;
+  collection_name: string;
+  infrastructure: string;
+  base_url: string | null;
+  /** Credentials/endpoint present in the service config. */
+  configured: boolean;
+  /** Endpoint answered a liveness probe (and, for Ollama, has the model pulled). */
+  online: boolean;
+};
+
 export type TBackendLocalChatModelsResponse = {
   provider: "ollama";
   online: boolean;
   base_url: string;
-  default_model: Exclude<TSummaryModel, "gpt-4.1-mini">;
+  default_model: TOllamaSummaryModel;
   openai_configured: boolean;
   openai_summary_model: "gpt-4.1-mini";
+  vllm_configured: boolean;
+  vllm_online: boolean;
+  vllm_base_url: string;
+  vllm_summary_model: string;
   models: Array<{
     provider: "ollama";
-    model: Exclude<TSummaryModel, "gpt-4.1-mini">;
+    model: TOllamaSummaryModel;
     label: string;
     size_gb: number;
     vision: boolean;
     installed: boolean;
   }>;
+  embedding_providers: TBackendEmbeddingProviderOption[];
 };
 
 export type TBackendChunk = {
