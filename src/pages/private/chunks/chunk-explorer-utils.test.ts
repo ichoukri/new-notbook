@@ -5,7 +5,6 @@ import {
   getChunkMetadataFields,
   getChunkPreview,
   getPrimaryContentType,
-  matchesChunkSearch,
 } from "./chunk-explorer-utils";
 
 const chunk: TIngestionChunk = {
@@ -42,12 +41,6 @@ describe("chunk explorer helpers", () => {
   it("falls back to text content type", () => {
     expect(getPrimaryContentType(chunk)).toBe("table");
     expect(getPrimaryContentType({ ...chunk, contentTypes: [] })).toBe("text");
-  });
-
-  it("matches chunk search against title, raw text, and summary", () => {
-    expect(matchesChunkSearch(chunk, "policy")).toBe(true);
-    expect(matchesChunkSearch(chunk, "summary")).toBe(true);
-    expect(matchesChunkSearch(chunk, "missing")).toBe(false);
   });
 
   it("formats metadata for display", () => {

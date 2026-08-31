@@ -1,7 +1,4 @@
-import {
-  getChunkSectionTitle,
-  getChunkTokenCount,
-} from "@/core/documents";
+import { getChunkTokenCount } from "@/core/documents";
 import type { TIngestionChunk } from "@/core/ingestions";
 
 export type ChunkTab = "raw" | "embed" | "metadata";
@@ -25,20 +22,6 @@ export function getPrimaryContentType(chunk: TIngestionChunk): string {
 export function formatJson(value: unknown): string {
   if (!value) return "{}";
   return JSON.stringify(value, null, 2);
-}
-
-export function matchesChunkSearch(
-  chunk: TIngestionChunk,
-  query: string,
-): boolean {
-  if (!query) return true;
-
-  const lowerQuery = query.toLowerCase();
-  return (
-    getChunkSectionTitle(chunk).toLowerCase().includes(lowerQuery) ||
-    chunk.textContent.toLowerCase().includes(lowerQuery) ||
-    (chunk.summaryContent ?? "").toLowerCase().includes(lowerQuery)
-  );
 }
 
 export function getChunkMetadataFields(

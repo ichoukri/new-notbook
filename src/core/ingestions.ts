@@ -101,6 +101,19 @@ export type TBackendFinalizeRequest = {
   summary_model?: TSummaryModel;
 };
 
+/** Corpus-wide counters from `/documents/stats`, computed server-side. */
+export type TBackendDocumentStats = {
+  total_documents: number;
+  total_datasets: number;
+  total_file_bytes: number;
+  chunk_count: number;
+  completed_count: number;
+  failed_count: number;
+  cancelled_count: number;
+  awaiting_approval_count: number;
+  running_count: number;
+};
+
 export type TBackendEmbeddingProviderOption = {
   provider: TEmbeddingProvider;
   label: string;

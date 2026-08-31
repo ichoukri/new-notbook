@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import useSWR from "swr";
+import useSWR, { type KeyedMutator } from "swr";
 import { backendApi, type TPaginatedResponse } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
 import {
@@ -12,21 +12,30 @@ import {
   mapBackendChunk,
   type TBackendChunk,
   type TBackendDocument,
+  type TBackendDocumentStats,
   type TIngestionChunk,
   type TIngestionDocument,
 } from "@/core/ingestions";
 
 type Params = Record<string, string>;
 
-type ResourceState<T> = {
-  items: T[];
+type ResourceState<TMapped, TBackend = unknown> = {
+  items: TMapped[];
   total: number;
   offset: number;
   limit: number;
   isLoading: boolean;
   isValidating: boolean;
   error: string;
-  refresh: () => Promise<TPaginatedResponse<unknown> | undefined>;
+  /** Revalidate from the server. */
+  refresh: () => Promise<TPaginatedResponse<TBackend> | undefined>;
+  /**
+   * Write the cache directly, for optimistic updates after a mutation.
+   *
+   * Operates on the raw backend page — the hook maps to the UI shape on read
+   * — so callers hand it the same objects the API returned.
+   */
+  mutate: KeyedMutator<TPaginatedResponse<TBackend>>;
 };
 
 const DEFAULT_LIST_META = {
@@ -45,7 +54,7 @@ function useBackendList<TBackend, TMapped>(
   params: Params | undefined,
   mapper: (item: TBackend) => TMapped,
   fallbackError: string,
-): ResourceState<TMapped> {
+): ResourceState<TMapped, TBackend> {
   const normalizedParams = normalizeParams(params);
   const key = path ? [keyPrefix, path, normalizedParams] as const : null;
 
@@ -79,6 +88,7 @@ function useBackendList<TBackend, TMapped>(
     isValidating,
     error: error ? getApiErrorMessage(error, fallbackError) : "",
     refresh: mutate,
+    mutate,
   };
 }
 
@@ -121,6 +131,51 @@ export function useDocument(documentId: string | null) {
     isLoading,
     isValidating,
     error: error ? getApiErrorMessage(error, "Could not load document.") : "",
+    refresh: mutate,
+  };
+}
+
+/**
+ * One chunk, with `original_content` and `chunk_metadata`.
+ *
+ * The per-document listing omits both — together ~40% of a chunk row, and
+ * neither is rendered for anything but the selected chunk.
+ */
+export function useChunk(chunkId: string | null) {
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    chunkId ? (["chunk", chunkId] as const) : null,
+    ([, id]) => backendApi.get<TBackendChunk>(`/chunks/${id}`),
+    { keepPreviousData: true, revalidateOnFocus: false },
+  );
+
+  return {
+    chunk: data ? mapBackendChunk(data) : null,
+    isLoading,
+    isValidating,
+    error: error ? getApiErrorMessage(error, "Could not load chunk.") : "",
+    refresh: mutate,
+  };
+}
+
+/**
+ * Corpus-wide counters, computed in SQL.
+ *
+ * Replaces summing a page of documents in the browser: the numbers are exact
+ * instead of capped at whatever `limit` the caller used, and the dashboard no
+ * longer fetches 100 documents to render six rows.
+ */
+export function useDocumentStats() {
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    ["document-stats"] as const,
+    () => backendApi.get<TBackendDocumentStats>("/documents/stats"),
+    { keepPreviousData: true, revalidateOnFocus: false },
+  );
+
+  return {
+    stats: data ?? null,
+    isLoading,
+    isValidating,
+    error: error ? getApiErrorMessage(error, "Could not load statistics.") : "",
     refresh: mutate,
   };
 }

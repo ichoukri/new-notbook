@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router";
 import Topbar from "@/components/app/topbar";
-import { useDatasets, useDocuments } from "@/core/api/hooks";
+import { useDatasets, useDocumentStats, useDocuments } from "@/core/api/hooks";
 import { AlertTriangle } from "lucide-react";
 import {
   DashboardQuickStats,
@@ -15,8 +15,12 @@ import {
 } from "./dashboard-sidebar-sections";
 import { getDashboardMetrics, getTopDatasets } from "./dashboard-utils";
 
+// Only the "recent ingestions" list is rendered from these, and it shows six.
+// Every counter now comes from /documents/stats, computed in SQL.
+const RECENT_DOCUMENT_COUNT = 6;
+
 const DASHBOARD_DOCUMENT_PARAMS: Record<string, string> = {
-  limit: "100",
+  limit: String(RECENT_DOCUMENT_COUNT),
   sort_by: "updated_at",
   sort_order: "desc",
 };
@@ -32,12 +36,18 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const datasetResource = useDatasets(DASHBOARD_DATASET_PARAMS);
   const documentResource = useDocuments(DASHBOARD_DOCUMENT_PARAMS);
+  const statsResource = useDocumentStats();
 
   const datasets = datasetResource.items;
   const documents = documentResource.items;
-  const isLoading = datasetResource.isLoading || documentResource.isLoading;
+  const isLoading =
+    datasetResource.isLoading ||
+    documentResource.isLoading ||
+    statsResource.isLoading;
   const isRefreshing =
-    datasetResource.isValidating || documentResource.isValidating;
+    datasetResource.isValidating ||
+    documentResource.isValidating ||
+    statsResource.isValidating;
 
   const datasetsById = useMemo(
     () => new Map(datasets.map((dataset) => [dataset.id, dataset.name])),
@@ -45,20 +55,18 @@ export default function DashboardPage() {
   );
 
   const metrics = useMemo(
-    () =>
-      getDashboardMetrics({
-        datasets,
-        documents,
-        datasetTotal: datasetResource.total,
-        documentTotal: documentResource.total,
-      }),
-    [datasetResource.total, datasets, documentResource.total, documents],
+    () => getDashboardMetrics(statsResource.stats),
+    [statsResource.stats],
   );
-  const recentDocuments = documents.slice(0, 6);
+  const recentDocuments = documents;
   const topDatasets = useMemo(() => getTopDatasets(datasets), [datasets]);
 
   const refreshDashboard = () => {
-    void Promise.all([datasetResource.refresh(), documentResource.refresh()]);
+    void Promise.all([
+      datasetResource.refresh(),
+      documentResource.refresh(),
+      statsResource.refresh(),
+    ]);
   };
 
   return (
@@ -67,16 +75,20 @@ export default function DashboardPage() {
 
       <main className="flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-[1400px] space-y-6 px-8 py-7">
-          {(datasetResource.error || documentResource.error) && (
+          {(datasetResource.error || documentResource.error || statsResource.error) && (
             <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertTriangle className="size-4 flex-shrink-0" />
-              <span>{datasetResource.error || documentResource.error}</span>
+              <span>
+                {datasetResource.error ||
+                  documentResource.error ||
+                  statsResource.error}
+              </span>
             </div>
           )}
 
           <DashboardSummaryCards
             metrics={metrics}
-            sampledDocumentCount={documents.length}
+            sampledDocumentCount={metrics.totalDocuments}
             topDatasetCount={topDatasets.length}
             isLoading={isLoading}
           />
@@ -105,7 +117,7 @@ export default function DashboardPage() {
                 metrics={metrics}
                 datasetError={datasetResource.error}
                 documentError={documentResource.error}
-                sampledDocumentCount={documents.length}
+                sampledDocumentCount={metrics.totalDocuments}
                 isRefreshing={isRefreshing}
                 onRefresh={refreshDashboard}
               />

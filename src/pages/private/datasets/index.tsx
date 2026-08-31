@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
+import { useDatasets } from "@/core/api/hooks";
+import type { TBackendDataset, TDataset } from "@/core/datasets";
 import { CreateDatasetModal } from "./components/create-dataset-modal";
 import { ImportDatasetDialog } from "./components/import-dataset-dialog";
 import { DatasetCard } from "./components/dataset-card";
@@ -28,6 +25,13 @@ import { DatasetToolbar } from "./components/dataset-toolbar";
 import { DeleteDatasetDialog } from "./components/delete-dataset-dialog";
 import { EmptyState, LoadingState } from "./components/dataset-states";
 
+const DATASET_LIST_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function DatasetsPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<DatasetView>("grid");
@@ -38,47 +42,12 @@ export default function DatasetsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [statusFilter, setStatusFilter] =
     useState<DatasetStatusFilter>("all");
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  const datasetResource = useDatasets(DATASET_LIST_PARAMS);
+  const datasets = datasetResource.items;
+  const error = datasetResource.error;
+  const isLoading = datasetResource.isLoading;
+  const reloadDatasets = () => void datasetResource.refresh();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDatasets = async () => {
-      setIsLoading(true);
-      setError("");
-
-      try {
-        const response = await backendApi.findMany<TBackendDataset>(
-          "/datasets/",
-          {
-            include_documents: "false",
-            limit: "100",
-          },
-        );
-
-        if (!cancelled) {
-          setDatasets(response.map(mapBackendDataset));
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(getApiErrorMessage(loadError, "Could not load datasets."));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadDatasets();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
 
   const filteredDatasets = useMemo(
     () => filterDatasets(datasets, { query: search, statusFilter }),
@@ -104,10 +73,18 @@ export default function DatasetsPage() {
       CreateDatasetPayload
     >("/datasets/", payload);
 
-    setDatasets((currentDatasets) => [
-      mapBackendDataset(createdDataset),
-      ...currentDatasets.filter((dataset) => dataset.id !== createdDataset.id),
-    ]);
+    await datasetResource.mutate(
+      (current) =>
+        current && {
+          ...current,
+          items: [
+            createdDataset,
+            ...current.items.filter((item) => item.id !== createdDataset.id),
+          ],
+          total: current.total + 1,
+        },
+      { revalidate: false },
+    );
     toast.success("Dataset created.");
   };
 
@@ -117,8 +94,14 @@ export default function DatasetsPage() {
     setIsDeleting(true);
     try {
       await backendApi.delete("/datasets", deleteTarget.id);
-      setDatasets((prev) =>
-        prev.filter((dataset) => dataset.id !== deleteTarget.id),
+      await datasetResource.mutate(
+        (current) =>
+          current && {
+            ...current,
+            items: current.items.filter((item) => item.id !== deleteTarget.id),
+            total: Math.max(0, current.total - 1),
+          },
+        { revalidate: false },
       );
       toast.success(`"${deleteTarget.name}" deleted.`);
       setDeleteTarget(null);
@@ -161,7 +144,7 @@ export default function DatasetsPage() {
               <p className="text-sm text-red-700">{error}</p>
               <button
                 type="button"
-                onClick={() => setReloadKey((current) => current + 1)}
+                onClick={reloadDatasets}
                 className="text-xs font-semibold text-red-700 hover:text-red-800"
               >
                 Retry
@@ -240,7 +223,7 @@ export default function DatasetsPage() {
               { description: warnings[0], duration: 10000 },
             );
           }
-          setReloadKey((current) => current + 1);
+          reloadDatasets();
         }}
       />
 

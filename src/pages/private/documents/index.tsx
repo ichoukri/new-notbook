@@ -4,12 +4,8 @@ import { toast } from "sonner";
 import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
+import { useDatasets } from "@/core/api/hooks";
 import { buildDocumentsCsv, getDocumentMode } from "@/core/documents";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
 import {
   type TBackendDocument,
   type TBackendDocumentMutationResponse,
@@ -32,61 +28,34 @@ function downloadCsv(filename: string, content: string) {
   window.URL.revokeObjectURL(url);
 }
 
+/** Shared with every other page that needs the dataset picker, so SWR serves
+ *  them all from one cached response instead of refetching per navigation. */
+const DATASET_PICKER_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function DocumentsPage() {
   const navigate = useNavigate();
   const currentUser = useGlobalStore((state) => state.user);
 
   const [documents, setDocuments] = useState<TIngestionDocument[]>([]);
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
+  const datasetResource = useDatasets(DATASET_PICKER_PARAMS);
+  const datasets = datasetResource.items;
   const [search, setSearch] = useState("");
   const [datasetFilter, setDatasetFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
-  const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
+  const isLoadingDatasets = datasetResource.isLoading;
   const [pageError, setPageError] = useState("");
   const [deleteTarget, setDeleteTarget] =
     useState<TIngestionDocument | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reingestingIds, setReingestingIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDatasets = async () => {
-      setIsLoadingDatasets(true);
-
-      try {
-        const response = await backendApi.findMany<TBackendDataset>(
-          "/datasets/",
-          {
-            include_documents: "false",
-            limit: "100",
-            sort_by: "updated_at",
-            sort_order: "desc",
-          },
-        );
-
-        if (!cancelled) {
-          setDatasets(response.map(mapBackendDataset));
-        }
-      } catch {
-        if (!cancelled) {
-          setDatasets([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDatasets(false);
-        }
-      }
-    };
-
-    void loadDatasets();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

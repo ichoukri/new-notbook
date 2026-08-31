@@ -32,11 +32,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
+import { useDatasets } from "@/core/api/hooks";
+import type { TDataset } from "@/core/datasets";
 import {
   type TBackendKnowledgeGroup,
   type TBackendKnowledgeGroupTreeNode,
@@ -391,9 +388,19 @@ function GroupCard({
   );
 }
 
+const DATASET_PICKER_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function KnowledgeGroupsPage() {
   const [tree, setTree] = useState<TKnowledgeGroupTreeNode[]>([]);
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
+  // Shared SWR cache: the dataset list is identical on every page that shows a
+  // picker, so it is fetched once rather than per navigation.
+  const datasetResource = useDatasets(DATASET_PICKER_PARAMS);
+  const datasets = datasetResource.items;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -410,18 +417,12 @@ export default function KnowledgeGroupsPage() {
       setLoading(true);
       setError("");
       try {
-        const [groupsResponse, datasetsResponse] = await Promise.all([
-          backendApi.findMany<TBackendKnowledgeGroupTreeNode>(
+        const groupsResponse =
+          await backendApi.findMany<TBackendKnowledgeGroupTreeNode>(
             "/knowledge-groups/tree",
-          ),
-          backendApi.findMany<TBackendDataset>("/datasets/", {
-            include_documents: "false",
-            limit: "100",
-          }),
-        ]);
+          );
         if (cancelled) return;
         setTree(groupsResponse.map(mapBackendKnowledgeGroupTree));
-        setDatasets(datasetsResponse.map(mapBackendDataset));
       } catch (loadError) {
         if (!cancelled) {
           setError(

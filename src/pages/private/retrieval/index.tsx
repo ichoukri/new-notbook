@@ -1,13 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
+import { useDatasets } from "@/core/api/hooks";
 import {
   mapBackendGroundedAnswerResponse,
   mapBackendRetrievalSearchDebug,
@@ -24,10 +20,20 @@ import type { RetrievalSearchModeId } from "./options";
 import { RetrievalResultsArea } from "./results-area";
 import { RetrievalSearchPanel } from "./search-panel";
 
+/** Shared with every other page that needs the dataset picker, so SWR serves
+ *  them all from one cached response instead of refetching per navigation. */
+const DATASET_PICKER_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function RetrievalTestPage() {
   const navigate = useNavigate();
 
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
+  const datasetResource = useDatasets(DATASET_PICKER_PARAMS);
+  const datasets = datasetResource.items;
   const [query, setQuery] = useState("");
   const [committedQuery, setCommittedQuery] = useState("");
   const [results, setResults] = useState<TRetrievalSearchHit[] | null>(null);
@@ -53,46 +59,7 @@ export default function RetrievalTestPage() {
   const [debugInfo, setDebugInfo] =
     useState<TRetrievalSearchDebug | null>(null);
   const [pageError, setPageError] = useState("");
-  const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDatasets = async () => {
-      setIsLoadingDatasets(true);
-
-      try {
-        const response = await backendApi.findMany<TBackendDataset>(
-          "/datasets/",
-          {
-            include_documents: "false",
-            limit: "100",
-            sort_by: "updated_at",
-            sort_order: "desc",
-          },
-        );
-
-        if (!cancelled) {
-          setDatasets(response.map(mapBackendDataset));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setDatasets([]);
-          setPageError(getApiErrorMessage(error, "Could not load datasets."));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDatasets(false);
-        }
-      }
-    };
-
-    void loadDatasets();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const isLoadingDatasets = datasetResource.isLoading;
 
   const datasetNamesById = useMemo(
     () => new Map(datasets.map((item) => [item.id, item.name])),

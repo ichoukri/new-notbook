@@ -10,11 +10,7 @@ import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
 import { env } from "@/config/env";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
+import { useDatasets } from "@/core/api/hooks";
 import {
   type TBackendDocumentMutationResponse,
   type TBackendFinalizeRequest,
@@ -67,10 +63,20 @@ import {
   makeItemId,
 } from "./new-ingestion/upload-files";
 
+/** Shared with every other page that needs the dataset picker, so SWR serves
+ *  them all from one cached response instead of refetching per navigation. */
+const DATASET_PICKER_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function NewIngestionPage() {
   const navigate = useNavigate();
 
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
+  const datasetResource = useDatasets(DATASET_PICKER_PARAMS);
+  const datasets = datasetResource.items;
   const [selectedDataset, setSelectedDataset] = useState("");
   const [items, setItems] = useState<UploadItem[]>([]);
   const [mode, setMode] = useState<IngestionMode>("auto");
@@ -83,8 +89,8 @@ export default function NewIngestionPage() {
     useState<SummaryProvider>("ollama");
   const [localChatModels, setLocalChatModels] =
     useState<TBackendLocalChatModelsResponse | null>(null);
-  const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
-  const [datasetsError, setDatasetsError] = useState("");
+  const isLoadingDatasets = datasetResource.isLoading;
+  const datasetsError = datasetResource.error;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finished, setFinished] = useState(false);
   const [showGuidedConfirm, setShowGuidedConfirm] = useState(false);
@@ -93,52 +99,6 @@ export default function NewIngestionPage() {
   // Abandon in-flight transfers if the page goes away mid-batch.
   useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDatasets = async () => {
-      setIsLoadingDatasets(true);
-      setDatasetsError("");
-
-      try {
-        const response = await backendApi.findMany<TBackendDataset>(
-          "/datasets/",
-          {
-            include_documents: "false",
-            limit: "100",
-          },
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextDatasets = response.map(mapBackendDataset);
-        setDatasets(nextDatasets);
-        setSelectedDataset((currentValue) => {
-          if (currentValue && nextDatasets.some((dataset) => dataset.id === currentValue)) {
-            return currentValue;
-          }
-
-          return nextDatasets[0]?.id ?? "";
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setDatasetsError(getApiErrorMessage(error, "Could not load datasets."));
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDatasets(false);
-        }
-      }
-    };
-
-    void loadDatasets();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TDataset } from "@/core/datasets";
-import type { TIngestionDocument } from "@/core/ingestions";
+import type { TBackendDocumentStats } from "@/core/ingestions";
 import {
   formatDashboardNumber,
   getDashboardMetrics,
@@ -24,55 +24,21 @@ const dataset = (overrides: Partial<TDataset>): TDataset => ({
   ...overrides,
 });
 
-const document = (
-  overrides: Partial<TIngestionDocument>,
-): TIngestionDocument => ({
-  id: "doc",
-  hash: "hash",
-  filename: "file.pdf",
-  fileSize: 100,
-  fileType: "pdf",
-  sourceUrl: null,
-  sourceRelativePaths: [],
-  userId: "user-1",
-  tenantId: "tenant-1",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-  taskId: null,
-  datasetIds: [],
-  processingStatus: "completed",
-  mode: "auto",
-  processingDetails: null,
-  docMetadata: null,
-  accessPolicy: null,
-  ...overrides,
-});
-
 describe("dashboard helpers", () => {
-  it("summarizes dashboard metrics", () => {
-    const metrics = getDashboardMetrics({
-      datasets: [dataset({ id: "dataset-1" })],
-      documents: [
-        document({
-          id: "doc-1",
-          processingDetails: { chunking: { total_chunks: 3 } },
-        }),
-        document({
-          id: "doc-2",
-          processingStatus: "failed",
-          fileSize: 50,
-        }),
-        document({
-          id: "doc-3",
-          processingStatus: "metadata_awaiting_approval",
-          fileSize: 25,
-        }),
-      ],
-      datasetTotal: 0,
-      documentTotal: 0,
-    });
+  it("maps server counters onto the dashboard metrics", () => {
+    const stats: TBackendDocumentStats = {
+      total_documents: 3,
+      total_datasets: 1,
+      total_file_bytes: 175,
+      chunk_count: 3,
+      completed_count: 1,
+      failed_count: 1,
+      cancelled_count: 0,
+      awaiting_approval_count: 1,
+      running_count: 0,
+    };
 
-    expect(metrics).toMatchObject({
+    expect(getDashboardMetrics(stats)).toEqual({
       totalDatasets: 1,
       totalDocuments: 3,
       totalFileBytes: 175,
@@ -80,6 +46,22 @@ describe("dashboard helpers", () => {
       completedCount: 1,
       failedCount: 1,
       awaitingApprovalCount: 1,
+      runningCount: 0,
+    });
+  });
+
+  it("renders zeros while the stats request is still in flight", () => {
+    // The dashboard mounts before /documents/stats resolves; every tile must
+    // show 0 rather than NaN or undefined.
+    expect(getDashboardMetrics(null)).toEqual({
+      totalDatasets: 0,
+      totalDocuments: 0,
+      totalFileBytes: 0,
+      chunkCount: 0,
+      completedCount: 0,
+      failedCount: 0,
+      awaitingApprovalCount: 0,
+      runningCount: 0,
     });
   });
 

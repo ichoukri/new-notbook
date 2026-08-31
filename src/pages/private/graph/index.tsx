@@ -6,16 +6,7 @@ import Topbar from "@/components/app/topbar";
 import { Button } from "@/components/ui/button";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
-import {
-  type TBackendDocument,
-  type TIngestionDocument,
-  mapBackendDocument,
-} from "@/core/ingestions";
+import { useDatasets, useDocuments } from "@/core/api/hooks";
 import {
   buildGraphPath,
   graphEntityPath,
@@ -83,14 +74,31 @@ function GraphServiceError({
   );
 }
 
+const GRAPH_DATASET_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
+const GRAPH_DOCUMENT_PARAMS: Record<string, string> = {
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function KnowledgeGraphExplorerPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
-  const [documents, setDocuments] = useState<TIngestionDocument[]>([]);
-  const [scopeLoading, setScopeLoading] = useState(true);
-  const [scopeError, setScopeError] = useState("");
+  // Both lists only populate the scope pickers, and both are shared with other
+  // pages, so SWR serves them from cache instead of refetching per navigation.
+  const datasetResource = useDatasets(GRAPH_DATASET_PARAMS);
+  const documentResource = useDocuments(GRAPH_DOCUMENT_PARAMS);
+  const datasets = datasetResource.items;
+  const documents = documentResource.items;
+  const scopeLoading = datasetResource.isLoading || documentResource.isLoading;
+  const scopeError = datasetResource.error || documentResource.error;
 
   const [entityPage, setEntityPage] =
     useState<TGraphEntityPage>(EMPTY_ENTITY_PAGE);
@@ -131,47 +139,6 @@ export default function KnowledgeGraphExplorerPage() {
     [setSearchParams],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadScopes = async () => {
-      setScopeLoading(true);
-      setScopeError("");
-      try {
-        const [datasetResponse, documentResponse] = await Promise.all([
-          backendApi.findMany<TBackendDataset>("/datasets/", {
-            include_documents: "false",
-            limit: "100",
-            sort_by: "updated_at",
-            sort_order: "desc",
-          }),
-          backendApi.findMany<TBackendDocument>("/documents/", {
-            limit: "100",
-            sort_by: "updated_at",
-            sort_order: "desc",
-          }),
-        ]);
-
-        if (!cancelled) {
-          setDatasets(datasetResponse.map(mapBackendDataset));
-          setDocuments(documentResponse.map(mapBackendDocument));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setScopeError(
-            getApiErrorMessage(error, "Could not load graph scope options."),
-          );
-        }
-      } finally {
-        if (!cancelled) setScopeLoading(false);
-      }
-    };
-
-    void loadScopes();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Scope ids are derived, never written back: a default the user never chose
   // stays out of the URL, so shared links only carry deliberate choices.

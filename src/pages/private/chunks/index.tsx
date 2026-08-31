@@ -1,13 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import Topbar from "@/components/app/topbar";
-import { useDocumentChunks, useDocuments } from "@/core/api/hooks";
+import { useChunk, useDocumentChunks, useDocuments } from "@/core/api/hooks";
 import { getChunkEmbeddingMode } from "@/core/documents";
 import { ChunkDetailPanel } from "./chunk-detail-panel";
-import {
-  type ChunkTab,
-  matchesChunkSearch,
-} from "./chunk-explorer-utils";
+import type { ChunkTab } from "./chunk-explorer-utils";
 import { ChunkSidebar } from "./chunk-sidebar";
 
 const DOCUMENT_PARAMS: Record<string, string> = {
@@ -16,10 +13,10 @@ const DOCUMENT_PARAMS: Record<string, string> = {
   sort_order: "desc",
 };
 
-const CHUNK_PARAMS: Record<string, string> = {
-  active_only: "true",
-  limit: "500",
-};
+const CHUNK_LIMIT = "500";
+
+/** Keystrokes are debounced before they reach the server. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function ChunkExplorerPage() {
   const navigate = useNavigate();
@@ -39,9 +36,29 @@ export default function ChunkExplorerPage() {
   const selectedDocument =
     documentsResource.items.find((document) => document.id === activeDocumentId) ??
     null;
+  // Search runs server-side: the listing is capped at CHUNK_LIMIT, so
+  // filtering in the browser would only ever search the first page of a long
+  // document. Debounced so typing does not fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const chunkParams = useMemo(
+    () => ({
+      active_only: "true",
+      limit: CHUNK_LIMIT,
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    }),
+    [debouncedSearch],
+  );
   const chunksResource = useDocumentChunks(
     activeDocumentId || null,
-    CHUNK_PARAMS,
+    chunkParams,
   );
 
   const contentTypes = useMemo(
@@ -52,28 +69,34 @@ export default function ChunkExplorerPage() {
     [chunksResource.items],
   );
 
-  const filteredChunks = useMemo(() => {
-    const query = search.trim();
+  // Text matching already happened on the server; these two narrow the
+  // returned page further and need no round trip.
+  const filteredChunks = useMemo(
+    () =>
+      chunksResource.items.filter((chunk) => {
+        const matchType =
+          typeFilter === "all" || chunk.contentTypes.includes(typeFilter);
+        const matchEmbedding =
+          embeddingFilter === "all" ||
+          getChunkEmbeddingMode(chunk) === embeddingFilter;
 
-    return chunksResource.items.filter((chunk) => {
-      const matchType =
-        typeFilter === "all" || chunk.contentTypes.includes(typeFilter);
-      const matchEmbedding =
-        embeddingFilter === "all" ||
-        getChunkEmbeddingMode(chunk) === embeddingFilter;
+        return matchType && matchEmbedding;
+      }),
+    [chunksResource.items, embeddingFilter, typeFilter],
+  );
 
-      return (
-        matchesChunkSearch(chunk, query) &&
-        matchType &&
-        matchEmbedding
-      );
-    });
-  }, [chunksResource.items, embeddingFilter, search, typeFilter]);
-
-  const selectedChunk =
+  const selectedListChunk =
     filteredChunks.find((chunk) => chunk.id === selectedChunkId) ??
     filteredChunks[0] ??
     null;
+  // The listing omits original_content and chunk_metadata, so the detail
+  // panel loads the selected chunk in full. Until it arrives the list row is
+  // rendered, which already carries everything except the metadata block.
+  const selectedDetail = useChunk(selectedListChunk?.id ?? null);
+  const selectedChunk =
+    selectedDetail.chunk?.id === selectedListChunk?.id
+      ? selectedDetail.chunk
+      : selectedListChunk;
   const selectedIndex = selectedChunk
     ? filteredChunks.findIndex((chunk) => chunk.id === selectedChunk.id)
     : -1;

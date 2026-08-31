@@ -32,11 +32,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
-import {
-  type TBackendDataset,
-  type TDataset,
-  mapBackendDataset,
-} from "@/core/datasets";
+import { useDatasets } from "@/core/api/hooks";
 import {
   type TBackendKnowledgeGroupTreeNode,
   type TKnowledgeGroupTreeNode,
@@ -279,10 +275,19 @@ function ChatMessage({
   );
 }
 
+const DATASET_PICKER_PARAMS: Record<string, string> = {
+  include_documents: "false",
+  limit: "100",
+  sort_by: "updated_at",
+  sort_order: "desc",
+};
+
 export default function KnowledgeChatPage() {
   const navigate = useNavigate();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
-  const [datasets, setDatasets] = useState<TDataset[]>([]);
+  // Shared SWR cache, so the dataset list is not refetched per navigation.
+  const datasetResource = useDatasets(DATASET_PICKER_PARAMS);
+  const datasets = datasetResource.items;
   const [knowledgeGroups, setKnowledgeGroups] = useState<
     TKnowledgeGroupTreeNode[]
   >([]);
@@ -318,44 +323,15 @@ export default function KnowledgeChatPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadKnowledge = async () => {
+    const loadGroups = async () => {
       setLoadingKnowledge(true);
       try {
-        const [datasetResponse, groupResponse] = await Promise.all([
-          backendApi.findMany<TBackendDataset>("/datasets/", {
-            include_documents: "false",
-            limit: "100",
-            sort_by: "updated_at",
-            sort_order: "desc",
-          }),
-          backendApi.findMany<TBackendKnowledgeGroupTreeNode>(
+        const groupResponse =
+          await backendApi.findMany<TBackendKnowledgeGroupTreeNode>(
             "/knowledge-groups/tree",
-          ),
-        ]);
+          );
         if (cancelled) return;
-        const mappedDatasets = datasetResponse.map(mapBackendDataset);
-        const mappedGroups = groupResponse.map(mapBackendKnowledgeGroupTree);
-        const scopes = flattenKnowledgeScopes(mappedGroups, mappedDatasets);
-        const grindingGroup = scopes.find(
-          (scope) =>
-            scope.type === "group" &&
-            scope.name.toLocaleLowerCase().includes("grinding"),
-        );
-        const grindingDataset = scopes.find(
-          (scope) =>
-            scope.type === "dataset" &&
-            scope.name.toLocaleLowerCase().includes("grinding"),
-        );
-        setDatasets(mappedDatasets);
-        setKnowledgeGroups(mappedGroups);
-        setScopeValue(
-          (current) =>
-            current ||
-            grindingGroup?.value ||
-            grindingDataset?.value ||
-            scopes[0]?.value ||
-            "",
-        );
+        setKnowledgeGroups(groupResponse.map(mapBackendKnowledgeGroupTree));
       } catch (requestError) {
         if (!cancelled) {
           setError(
@@ -367,11 +343,37 @@ export default function KnowledgeChatPage() {
       }
     };
 
-    void loadKnowledge();
+    void loadGroups();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Datasets and groups now arrive independently, so the default scope is
+  // picked once both are in. `current ||` keeps a user's choice untouched.
+  useEffect(() => {
+    if (datasets.length === 0 && knowledgeGroups.length === 0) return;
+
+    const scopes = flattenKnowledgeScopes(knowledgeGroups, datasets);
+    const grindingGroup = scopes.find(
+      (scope) =>
+        scope.type === "group" &&
+        scope.name.toLocaleLowerCase().includes("grinding"),
+    );
+    const grindingDataset = scopes.find(
+      (scope) =>
+        scope.type === "dataset" &&
+        scope.name.toLocaleLowerCase().includes("grinding"),
+    );
+    setScopeValue(
+      (current) =>
+        current ||
+        grindingGroup?.value ||
+        grindingDataset?.value ||
+        scopes[0]?.value ||
+        "",
+    );
+  }, [datasets, knowledgeGroups]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
