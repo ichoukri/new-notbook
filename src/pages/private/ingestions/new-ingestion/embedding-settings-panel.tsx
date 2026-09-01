@@ -19,6 +19,8 @@ import {
   SUMMARY_PROVIDER_CHROME,
   SUMMARY_PROVIDER_ORDER,
   embeddingDetails,
+  isEmbeddingProviderEnabled,
+  isProviderEnabled,
   shortModelName,
 } from "./providers";
 import type {
@@ -295,11 +297,13 @@ export function EmbeddingSettingsPanel({
               </div>
 
               <div
-                className="mt-2.5 grid grid-cols-3 gap-2"
+                className="mt-2.5 grid auto-cols-fr grid-flow-col gap-2"
                 role="radiogroup"
                 aria-label="Embedding provider"
               >
-                {EMBEDDING_PROVIDER_ORDER.map((provider) => {
+                {EMBEDDING_PROVIDER_ORDER.filter((provider) =>
+                  isEmbeddingProviderEnabled(provider, localChatModels),
+                ).map((provider) => {
                   const chrome = EMBEDDING_PROVIDER_CHROME[provider];
                   const details = embeddingDetails(provider, localChatModels);
                   return (
@@ -375,11 +379,13 @@ export function EmbeddingSettingsPanel({
               </div>
 
               <div
-                className="mt-2.5 grid grid-cols-3 gap-2"
+                className="mt-2.5 grid auto-cols-fr grid-flow-col gap-2"
                 role="radiogroup"
                 aria-label="Summarization provider"
               >
-                {SUMMARY_PROVIDER_ORDER.map((provider) => {
+                {SUMMARY_PROVIDER_ORDER.filter((provider) =>
+                  isProviderEnabled(provider, localChatModels),
+                ).map((provider) => {
                   const chrome = SUMMARY_PROVIDER_CHROME[provider];
                   const unavailable = summaryUnavailable[provider];
                   return (

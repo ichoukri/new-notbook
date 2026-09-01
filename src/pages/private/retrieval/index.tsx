@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import Topbar from "@/components/app/topbar";
 import { backendApi } from "@/core/api";
 import { getApiErrorMessage } from "@/core/api/error";
 import { useDatasets } from "@/core/api/hooks";
+import { fetchProviderSettings } from "@/core/settings";
 import {
   mapBackendGroundedAnswerResponse,
   mapBackendRetrievalSearchDebug,
@@ -16,7 +17,7 @@ import {
   type TRetrievalSearchHit,
   type TRetrievalSearchRequest,
 } from "@/core/retrieval";
-import type { RetrievalSearchModeId } from "./options";
+import { SEARCH_MODES, type RetrievalSearchModeId } from "./options";
 import { RetrievalResultsArea } from "./results-area";
 import { RetrievalSearchPanel } from "./search-panel";
 
@@ -60,6 +61,51 @@ export default function RetrievalTestPage() {
     useState<TRetrievalSearchDebug | null>(null);
   const [pageError, setPageError] = useState("");
   const isLoadingDatasets = datasetResource.isLoading;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const mode = String(settings.values.retrieval_default_search_mode ?? "");
+        if (SEARCH_MODES.some((option) => option.id === mode)) {
+          setSearchMode(mode as RetrievalSearchModeId);
+        }
+
+        const expansion = String(
+          settings.values.retrieval_default_query_expansion ?? "none",
+        );
+        if (expansion === "none" || expansion === "multi_query") {
+          setQueryExpansion(expansion);
+        }
+
+        const configuredTopK = Number(settings.values.retrieval_default_top_k);
+        if (Number.isInteger(configuredTopK) && configuredTopK >= 1 && configuredTopK <= 20) {
+          setTopK([configuredTopK]);
+        }
+
+        const configuredCandidateK = Number(
+          settings.values.retrieval_default_candidate_k,
+        );
+        if (
+          Number.isInteger(configuredCandidateK) &&
+          configuredCandidateK >= 0 &&
+          configuredCandidateK <= 200
+        ) {
+          setCandidateK(configuredCandidateK === 0 ? null : configuredCandidateK);
+        }
+        setDebugEnabled(
+          settings.values.retrieval_default_debug_enabled === true,
+        );
+      })
+      .catch(() => {
+        // Retrieval remains usable with its local defaults when the optional
+        // settings lookup is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const datasetNamesById = useMemo(
     () => new Map(datasets.map((item) => [item.id, item.name])),

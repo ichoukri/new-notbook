@@ -130,6 +130,10 @@ export type TBackendEmbeddingProviderOption = {
 
 export type TBackendLocalChatModelsResponse = {
   provider: "ollama";
+  /** Providers the operator left switched on in the settings page. */
+  enabled_providers: TSummaryProvider[];
+  chat_provider: TSummaryProvider;
+  graph_extraction_provider: TSummaryProvider;
   online: boolean;
   base_url: string;
   default_model: TOllamaSummaryModel;

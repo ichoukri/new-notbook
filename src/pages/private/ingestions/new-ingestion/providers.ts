@@ -173,3 +173,36 @@ export function defaultSummaryModel(
     localChatModels?.default_model ?? OLLAMA_SUMMARY_MODELS[0].model
   );
 }
+
+
+/**
+ * The embedding provider ids the backend stores map onto provider *plugins*
+ * one-to-one, except that the vLLM-served embeddings are stored as `qwen`.
+ */
+const EMBEDDING_TO_PLUGIN: Record<EmbeddingProvider, SummaryProvider> = {
+  openai: "openai",
+  ollama: "ollama",
+  qwen: "vllm",
+};
+
+/**
+ * Whether a provider is offered at all.
+ *
+ * A provider switched off in the settings page is hidden here rather than
+ * shown as a choice that would fail once ingestion starts. Everything is
+ * offered until the backend has answered.
+ */
+export function isProviderEnabled(
+  plugin: SummaryProvider,
+  localChatModels: TBackendLocalChatModelsResponse | null,
+): boolean {
+  const enabled = localChatModels?.enabled_providers;
+  return !enabled || enabled.includes(plugin);
+}
+
+export function isEmbeddingProviderEnabled(
+  provider: EmbeddingProvider,
+  localChatModels: TBackendLocalChatModelsResponse | null,
+): boolean {
+  return isProviderEnabled(EMBEDDING_TO_PLUGIN[provider], localChatModels);
+}

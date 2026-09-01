@@ -11,7 +11,6 @@ import {
   Zap,
   Search,
   Network,
-  Cpu,
   Box,
   Activity,
   Settings,
@@ -46,7 +45,6 @@ const NAV_GROUPS = [
   {
     label: "Configure",
     items: [
-      { label: "Models", icon: Cpu, path: "/settings" },
       { label: "Settings", icon: Settings, path: "/settings" },
     ],
   },

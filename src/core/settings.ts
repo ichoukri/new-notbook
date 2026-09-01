@@ -2,7 +2,7 @@ import { AxiosError } from "axios";
 import { backendApi } from "@/core/api";
 
 /**
- * Runtime provider configuration.
+ * Runtime project configuration.
  *
  * `values` carries the *effective* configuration — environment defaults with
  * saved overrides applied — and `sources` says which of the two each field
@@ -17,9 +17,13 @@ export type TProviderSettings = {
   editable_fields: string[];
   secret_fields: string[];
   values: Record<string, string | number | boolean>;
+  /** Raw service-environment baseline; secrets remain masked. */
+  environment_values: Record<string, string | number | boolean>;
   sources: Record<string, "env" | "settings">;
   /** Where each embedding provider's vectors are written. */
   collections: Record<string, string>;
+  /** Safe infrastructure facts that are controlled by the service environment. */
+  managed_values: Record<string, string | number | boolean>;
 };
 
 export type TProviderSettingsUpdateResponse = TProviderSettings & {
@@ -32,11 +36,14 @@ export type TProviderTestResult = {
   online: boolean;
   detail: string;
   served_models: string[];
+  configured_models: string[];
+  missing_models: string[];
   /** Null when the endpoint did not answer, so nothing could be checked. */
   model_available: boolean | null;
 };
 
-const PROVIDERS_PATH = "/settings/providers";
+const SETTINGS_PATH = "/settings/runtime";
+const PROVIDER_TEST_PATH = "/settings/providers/test";
 
 /**
  * Thrown when a save would move an embedding provider to a new collection.
@@ -49,23 +56,56 @@ export class ReindexConfirmationRequired extends Error {
   }
 }
 
+export class SettingsRevisionConflict extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettingsRevisionConflict";
+  }
+}
+
 export async function fetchProviderSettings(): Promise<TProviderSettings> {
-  return backendApi.get<TProviderSettings>(PROVIDERS_PATH);
+  return backendApi.get<TProviderSettings>(SETTINGS_PATH);
 }
 
 export async function saveProviderSettings(
   values: Record<string, string | number | boolean>,
-  { acknowledgeReindex = false }: { acknowledgeReindex?: boolean } = {},
+  {
+    acknowledgeReindex = false,
+    expectedRevision,
+  }: { acknowledgeReindex?: boolean; expectedRevision: number },
 ): Promise<TProviderSettingsUpdateResponse> {
   try {
     return await backendApi.put<
       TProviderSettingsUpdateResponse,
-      { values: typeof values; acknowledge_reindex: boolean }
-    >(PROVIDERS_PATH, { values, acknowledge_reindex: acknowledgeReindex });
+      {
+        values: typeof values;
+        acknowledge_reindex: boolean;
+        expected_revision: number;
+      }
+    >(SETTINGS_PATH, {
+      values,
+      acknowledge_reindex: acknowledgeReindex,
+      expected_revision: expectedRevision,
+    });
   } catch (error) {
     if (error instanceof AxiosError && error.response?.status === 409) {
+      const detail = error.response.data?.detail;
+      if (
+        typeof detail === "object" &&
+        detail !== null &&
+        "code" in detail &&
+        detail.code === "settings_revision_conflict"
+      ) {
+        throw new SettingsRevisionConflict(
+          String(
+            "message" in detail
+              ? detail.message
+              : "Project settings changed in another session.",
+          ),
+        );
+      }
       throw new ReindexConfirmationRequired(
-        String(error.response.data?.detail ?? "Re-ingestion confirmation required."),
+        String(detail ?? "Re-ingestion confirmation required."),
       );
     }
     throw error;
@@ -74,11 +114,12 @@ export async function saveProviderSettings(
 
 export async function testProviderSettings(
   values: Record<string, string | number | boolean>,
+  targets: TProviderTestResult["target"][],
 ): Promise<TProviderTestResult[]> {
   const response = await backendApi.create<
     { results: TProviderTestResult[] },
-    { values: typeof values }
-  >(`${PROVIDERS_PATH}/test`, { values });
+    { values: typeof values; targets: typeof targets }
+  >(PROVIDER_TEST_PATH, { values, targets });
   return response.results;
 }
 
